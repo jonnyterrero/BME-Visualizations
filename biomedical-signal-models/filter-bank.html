@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biosignal Filter Bank</title>
+<meta name="description" content="Interactive frequency-response explorer for the four filters used to condition biomedical signals.">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#eef1f5; --surface:#ffffff; --surface-2:#f6f8fb;
+    --ink:#171f2e; --ink-2:#47536a; --muted:#8592a6; --line:#e2e7ef; --line-2:#eef1f6;
+    --curve:#0e9384; --curve-fill:rgba(14,147,132,0.16); --curve-fill-top:rgba(14,147,132,0.30);
+    --pass:#0e9384; --stop:#b23a52;
+    --b-drift:#6b7280; --b-ecg:#2f6fd0; --b-emg:#8b5cf6; --b-line:#c67d1e; --b-hf:#c24a6e;
+    --shadow:0 1px 2px rgba(20,30,50,.04),0 6px 20px rgba(20,30,50,.06);
+    --grid:#eceff4;
+  }
+  :root:not([data-theme="light"]){}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1216; --surface:#191d24; --surface-2:#12151a;
+      --ink:#e9edf3; --ink-2:#a9b4c6; --muted:#6f7c92; --line:#282e39; --line-2:#20252e;
+      --curve:#2dd4bf; --curve-fill:rgba(45,212,191,0.15); --curve-fill-top:rgba(45,212,191,0.32);
+      --pass:#2dd4bf; --stop:#f0798f;
+      --b-drift:#8a93a6; --b-ecg:#5b9bff; --b-emg:#a98bff; --b-line:#e0a748; --b-hf:#f0798f;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+      --grid:#232833;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1216; --surface:#191d24; --surface-2:#12151a;
+    --ink:#e9edf3; --ink-2:#a9b4c6; --muted:#6f7c92; --line:#282e39; --line-2:#20252e;
+    --curve:#2dd4bf; --curve-fill:rgba(45,212,191,0.15); --curve-fill-top:rgba(45,212,191,0.32);
+    --pass:#2dd4bf; --stop:#f0798f;
+    --b-drift:#8a93a6; --b-ecg:#5b9bff; --b-emg:#a98bff; --b-line:#e0a748; --b-hf:#f0798f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+    --grid:#232833;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding-block:34px 60px;padding-inline:20px;}
+
+  header .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--curve);font-weight:600;}
+  h1{font-size:clamp(26px,4.4vw,40px);font-weight:700;line-height:1.08;margin:.28em 0 .3em;
+    letter-spacing:-.02em;text-wrap:balance;max-width:19ch;}
+  .lede{color:var(--ink-2);font-size:16px;max-width:64ch;margin:0;}
+  .lede b{color:var(--ink);font-weight:600;}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;
+    margin-top:22px;padding:12px 16px;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;box-shadow:var(--shadow);}
+  .toolbar .grp{display:flex;align-items:center;gap:10px;}
+  .toolbar .lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:8px;padding:2px;gap:2px;}
+  .seg button{font:inherit;font-size:13px;font-weight:600;border:0;background:transparent;
+    color:var(--ink-2);padding:5px 12px;border-radius:6px;cursor:pointer;transition:.15s;}
+  .seg button[aria-pressed="true"]{background:var(--curve);color:#fff;}
+  :root[data-theme="dark"] .seg button[aria-pressed="true"],
+  @media (prefers-color-scheme:dark){}
+  .seg button:focus-visible{outline:2px solid var(--curve);outline-offset:2px;}
+  .toolbar .spacer{flex:1 1 auto;}
+
+  /* spectrum reference strip */
+  .spectrum{margin-top:22px;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);padding:18px 20px 14px;}
+  .spectrum h2, .filters h2 span{margin:0;}
+  .sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px;}
+  .sec-head h2{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+  .sec-head p{margin:0;color:var(--muted);font-size:13px;}
+
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px;}
+  @media (max-width:820px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px 18px 16px;display:flex;flex-direction:column;}
+  .card .top{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;}
+  .card h3{font-size:18px;font-weight:700;margin:0;letter-spacing:-.01em;}
+  .card .role{color:var(--ink-2);font-size:13.5px;margin:.28em 0 0;}
+  .tag{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.04em;
+    padding:4px 9px;border-radius:999px;white-space:nowrap;flex:none;}
+  .tag.hp{background:color-mix(in srgb,var(--b-ecg) 15%,transparent);color:var(--b-ecg);}
+  .tag.lp{background:color-mix(in srgb,var(--b-hf) 15%,transparent);color:var(--b-hf);}
+  .tag.bp{background:color-mix(in srgb,var(--curve) 16%,transparent);color:var(--curve);}
+  .tag.no{background:color-mix(in srgb,var(--b-line) 18%,transparent);color:var(--b-line);}
+
+  .plotwrap{position:relative;margin-top:14px;}
+  .plotwrap svg{display:block;width:100%;height:auto;}
+  .plotwrap .readout{position:absolute;top:8px;left:10px;font-family:"IBM Plex Mono",monospace;
+    font-size:12px;font-weight:500;color:var(--ink-2);background:color-mix(in srgb,var(--surface) 82%,transparent);
+    padding:3px 8px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .12s;
+    border:1px solid var(--line);white-space:nowrap;}
+  .plotwrap .readout b{color:var(--curve);}
+
+  .controls{margin-top:12px;display:flex;flex-direction:column;gap:9px;}
+  .ctl{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;}
+  .ctl label{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2);
+    font-weight:600;letter-spacing:.02em;}
+  .ctl output{font-family:"IBM Plex Mono",monospace;font-size:12.5px;color:var(--ink);
+    font-weight:600;font-variant-numeric:tabular-nums;min-width:74px;text-align:right;}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:3px;
+    background:var(--line);cursor:pointer;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+    border-radius:50%;background:var(--curve);border:2px solid var(--surface);
+    box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:2px solid var(--surface);
+    border-radius:50%;background:var(--curve);}
+  input[type=range]:focus-visible{outline:2px solid var(--curve);outline-offset:3px;}
+
+  .interp{margin-top:14px;padding-top:13px;border-top:1px solid var(--line-2);}
+  .interp .h{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:7px;}
+  .interp ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .interp li{position:relative;padding-left:18px;font-size:13.5px;color:var(--ink-2);}
+  .interp li::before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;
+    border-radius:2px;background:var(--curve);}
+  .interp li b{color:var(--ink);font-weight:600;}
+
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;}
+  .legend .it{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);}
+  .legend .sw{width:13px;height:13px;border-radius:3px;flex:none;}
+  .legend .it code{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);}
+
+  footer{margin-top:34px;color:var(--muted);font-size:12.5px;line-height:1.6;
+    border-top:1px solid var(--line);padding-top:16px;}
+  footer code{font-family:"IBM Plex Mono",monospace;color:var(--ink-2);}
+  .axis-txt{font-family:"IBM Plex Mono",monospace;}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Biomedical Instrumentation · Signals &amp; Systems</div>
+    <h1>The Four Filters of Biosignal Conditioning</h1>
+    <p class="lede">Every filter is really a statement about <b>frequency</b>: which components of a signal survive and which are attenuated. Below, each filter's magnitude response |H(f)| is drawn on a shared log-frequency axis, laid over the bands where real physiological signals and their contaminants actually live. Drag the cutoffs and watch the passband move across the biology.</p>
+  </header>
+
+  <div class="toolbar" role="group" aria-label="Global controls">
+    <div class="grp">
+      <span class="lbl">Gain axis</span>
+      <div class="seg" id="axisSeg">
+        <button data-mode="db" aria-pressed="true">Decibels</button>
+        <button data-mode="lin" aria-pressed="false">Linear</button>
+      </div>
+    </div>
+    <div class="grp">
+      <span class="lbl">Line frequency</span>
+      <div class="seg" id="lineSeg">
+        <button data-f0="60" aria-pressed="true">60 Hz</button>
+        <button data-f0="50" aria-pressed="false">50 Hz</button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="grp">
+      <span class="lbl">Theme</span>
+      <div class="seg" id="themeSeg">
+        <button data-th="light" aria-pressed="false">Light</button>
+        <button data-th="dark" aria-pressed="false">Dark</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="spectrum">
+    <div class="sec-head">
+      <h2>Where the signals live</h2>
+      <p>Occupancy of the frequency axis — the physiological bands worth keeping, and the interference worth removing.</p>
+    </div>
+    <div id="spectrumPlot" class="plotwrap"></div>
+    <div class="legend" id="specLegend"></div>
+  </section>
+
+  <section class="filters">
+    <div class="grid" id="cards"></div>
+  </section>
+
+  <footer>
+    <b style="color:var(--ink-2)">Model.</b> First-order roll-offs for high-pass <code>|H|=r/√(1+r²), r=f/f_c</code> and low-pass <code>|H|=1/√(1+(f/f_c)²)</code>; the band-pass is their cascade; the notch is a 2nd-order band-stop <code>|H|=|f₀²−f²| / √((f₀²−f²)²+(f·f₀/Q)²)</code>. Physiological band edges are nominal teaching values (ECG monitoring 0.5–40 Hz, diagnostic to ~150 Hz; EMG surface 20–500 Hz; EEG 0.5–40 Hz), not device specs. −3 dB (0.707) marks the conventional passband edge.
+  </footer>
+</div>
+
+<script>
+/* ---------- shared config ---------- */
+const FMIN=0.01, FMAX=1000;
+const L10=Math.log10, lgmin=L10(FMIN), lgspan=L10(FMAX)-L10(FMIN);
+const DB_TOP=6, DB_BOT=-60;
+let axisMode='db';      // 'db' | 'lin'
+let lineF0=60;          // 50 | 60
+
+// physiological bands (nominal teaching ranges)
+const BANDS=[
+  {key:'drift', label:'DC offset & baseline drift', range:[0.01,0.5], v:'--b-drift', note:'electrode offset, respiration, motion'},
+  {key:'ecg',   label:'ECG / EEG rhythms',          range:[0.5,40],   v:'--b-ecg',   note:'diagnostic cardiac & cortical activity'},
+  {key:'emg',   label:'EMG (surface)',              range:[20,500],   v:'--b-emg',   note:'muscle activation'},
+  {key:'line',  label:'Power-line interference',    range:'line',     v:'--b-line',  note:'50 / 60 Hz mains + harmonics'},
+  {key:'hf',    label:'High-frequency noise',       range:[500,1000], v:'--b-hf',    note:'thermal, RF, switching, aliasing'},
+];
+
+/* ---------- filter transfer functions (magnitude) ---------- */
+const F={
+  hp:(f,{fc})=>{const r=f/fc; return r/Math.sqrt(1+r*r);},
+  lp:(f,{fc})=>1/Math.sqrt(1+(f/fc)**2),
+  bp:(f,{fl,fh})=>{const r=f/fl; return (r/Math.sqrt(1+r*r))*(1/Math.sqrt(1+(f/fh)**2));},
+  no:(f,{f0,Q})=>{const n=Math.abs(f0*f0-f*f)/Math.sqrt((f0*f0-f*f)**2+(f*f0/Q)**2); return n;},
+};
+
+/* ---------- coordinate maps ---------- */
+const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function fx(f,x0,w){return x0 + (L10(f)-lgmin)/lgspan * w;}
+function xf(px,x0,w){return Math.pow(10, lgmin + (px-x0)/w*lgspan);}
+function magY(m,y0,h){
+  if(axisMode==='lin'){const v=Math.min(m,1.08); return y0 + (1.08-v)/1.08*h;}
+  let db=20*L10(Math.max(m,1e-9)); db=Math.max(DB_BOT,Math.min(DB_TOP,db));
+  return y0 + (DB_TOP-db)/(DB_TOP-DB_BOT)*h;
+}
+const DECADES=[0.01,0.1,1,10,100,1000];
+const decLabel=f=> f>=1? (f>=1000?'1k':''+f) : ''+f;
+
+/* ---------- SVG helpers ---------- */
+const NS='http://www.w3.org/2000/svg';
+function el(tag,at){const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);return e;}
+
+/* ---------- draw one filter plot ---------- */
+function drawPlot(host, type, params, opts={}){
+  host.innerHTML='';
+  const W=host.clientWidth||520, H=opts.H||212;
+  const padL=38, padR=14, padT=14, padB=26;
+  const x0=padL, y0=padT, w=W-padL-padR, h=H-padT-padB;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H,role:'img'});
+  const ink=cssv('--ink'), ink2=cssv('--ink-2'), muted=cssv('--muted'),
+        grid=cssv('--grid'), line=cssv('--line'), curve=cssv('--curve');
+
+  // gridlines + x ticks
+  DECADES.forEach(d=>{
+    const x=fx(d,x0,w);
+    svg.appendChild(el('line',{x1:x,y1:y0,x2:x,y2:y0+h,stroke:grid,'stroke-width':1}));
+    const t=el('text',{x:x,y:y0+h+16,fill:muted,'font-size':10,'text-anchor':'middle',class:'axis-txt'});
+    t.textContent=decLabel(d); svg.appendChild(t);
+  });
+  const xlab=el('text',{x:x0+w,y:y0+h+16,fill:muted,'font-size':10,'text-anchor':'end',class:'axis-txt'});
+  xlab.textContent='Hz'; svg.appendChild(xlab);
+
+  // y ticks
+  const yticks = axisMode==='lin'? [{v:1,l:'1.0'},{v:0.707,l:'.71'},{v:0.5,l:'0.5'},{v:0,l:'0'}]
+    : [{d:0,l:'0'},{d:-3,l:'−3'},{d:-20,l:'−20'},{d:-40,l:'−40'},{d:-60,l:'−60'}];
+  yticks.forEach(t=>{
+    const y = axisMode==='lin'? magY(t.v,y0,h) : y0+(DB_TOP-t.d)/(DB_TOP-DB_BOT)*h;
+    svg.appendChild(el('line',{x1:x0,y1:y,x2:x0+w,y2:y,stroke:grid,'stroke-width':1,
+      'stroke-dasharray':(t.l==='−3'||t.l==='.71')?'3 3':''}));
+    const tx=el('text',{x:x0-6,y:y+3,fill:muted,'font-size':9.5,'text-anchor':'end',class:'axis-txt'});
+    tx.textContent=t.l; svg.appendChild(tx);
+  });
+  // y axis title
+  const yt=el('text',{x:12,y:y0+h/2,fill:muted,'font-size':10,'text-anchor':'middle',
+    class:'axis-txt',transform:`rotate(-90 12 ${y0+h/2})`});
+  yt.textContent = axisMode==='lin'?'|H|':'dB'; svg.appendChild(yt);
+
+  // physiological context shading for this plot (light zones)
+  function zone(a,b,v,op){const xa=fx(Math.max(a,FMIN),x0,w), xb=fx(Math.min(b,FMAX),x0,w);
+    svg.appendChild(el('rect',{x:xa,y:y0,width:Math.max(0,xb-xa),height:h,
+      fill:`color-mix(in srgb, ${cssv(v)} ${op}%, transparent)`}));}
+  if(opts.zones) opts.zones.forEach(z=>zone(z[0],z[1],z[2],z[3]));
+
+  // line-frequency marker (amber) on relevant plots
+  if(opts.lineMark){
+    const xl=fx(lineF0,x0,w);
+    svg.appendChild(el('line',{x1:xl,y1:y0,x2:xl,y2:y0+h,stroke:cssv('--b-line'),
+      'stroke-width':1.5,'stroke-dasharray':'2 3',opacity:.9}));
+    const lt=el('text',{x:xl,y:y0+10,fill:cssv('--b-line'),'font-size':9.5,'text-anchor':'middle',
+      class:'axis-txt','font-weight':600});
+    lt.textContent=lineF0+'Hz'; svg.appendChild(lt);
+  }
+
+  // sample the curve
+  const N=260, pts=[];
+  for(let i=0;i<=N;i++){const f=Math.pow(10,lgmin+i/N*lgspan); pts.push([f, F[type](f,params)]);}
+  // area fill under curve (gradient)
+  const gid='g'+Math.random().toString(36).slice(2,7);
+  const defs=el('defs'); const lg=el('linearGradient',{id:gid,x1:0,y1:0,x2:0,y2:1});
+  lg.appendChild(el('stop',{offset:'0%','stop-color':cssv('--curve-fill-top')}));
+  lg.appendChild(el('stop',{offset:'100%','stop-color':cssv('--curve-fill')}));
+  defs.appendChild(lg); svg.appendChild(defs);
+  let area=`M ${fx(pts[0][0],x0,w)} ${y0+h}`;
+  pts.forEach(p=>area+=` L ${fx(p[0],x0,w).toFixed(2)} ${magY(p[1],y0,h).toFixed(2)}`);
+  area+=` L ${fx(pts[pts.length-1][0],x0,w)} ${y0+h} Z`;
+  svg.appendChild(el('path',{d:area,fill:`url(#${gid})`,stroke:'none'}));
+  // curve line
+  let ln=''; pts.forEach((p,i)=>ln+=(i?' L ':'M ')+fx(p[0],x0,w).toFixed(2)+' '+magY(p[1],y0,h).toFixed(2));
+  svg.appendChild(el('path',{d:ln,fill:'none',stroke:curve,'stroke-width':2.2,
+    'stroke-linejoin':'round','stroke-linecap':'round'}));
+
+  // cutoff markers
+  (opts.markers||[]).forEach(m=>{
+    const x=fx(m.f,x0,w);
+    svg.appendChild(el('line',{x1:x,y1:y0,x2:x,y2:y0+h,stroke:curve,'stroke-width':1.3,
+      'stroke-dasharray':'4 3',opacity:.7}));
+    const mt=el('text',{x:x,y:y0+h-5,fill:curve,'font-size':9.5,'text-anchor':x> x0+w*0.8?'end':'middle',
+      class:'axis-txt','font-weight':600});
+    mt.textContent=m.label; svg.appendChild(mt);
+  });
+
+  // axis border
+  svg.appendChild(el('rect',{x:x0,y:y0,width:w,height:h,fill:'none',stroke:line,'stroke-width':1}));
+
+  // hover layer
+  const crossX=el('line',{y1:y0,y2:y0+h,stroke:curve,'stroke-width':1,opacity:0}); svg.appendChild(crossX);
+  const dot=el('circle',{r:4,fill:curve,stroke:cssv('--surface'),'stroke-width':2,opacity:0}); svg.appendChild(dot);
+  const hit=el('rect',{x:x0,y:y0,width:w,height:h,fill:'transparent',style:'cursor:crosshair'});
+  svg.appendChild(hit);
+  const readout=host.querySelector('.readout');
+  const scale=()=>W/(host.clientWidth||W);
+  function move(ev){
+    const r=svg.getBoundingClientRect(); const s=W/r.width;
+    let px=(ev.clientX-r.left)*s; px=Math.max(x0,Math.min(x0+w,px));
+    const f=xf(px,x0,w), m=F[type](f,params);
+    const y=magY(m,y0,h);
+    crossX.setAttribute('x1',px);crossX.setAttribute('x2',px);crossX.setAttribute('opacity',.55);
+    dot.setAttribute('cx',px);dot.setAttribute('cy',y);dot.setAttribute('opacity',1);
+    const fTxt = f>=1? f.toFixed(f>=100?0:1)+' Hz' : f.toFixed(3)+' Hz';
+    const gTxt = axisMode==='lin'? '|H| '+m.toFixed(3) : (20*L10(Math.max(m,1e-9))).toFixed(1)+' dB';
+    readout.innerHTML=`f = <b>${fTxt}</b> &nbsp; ${gTxt}`;
+    readout.style.opacity=1;
+  }
+  function leave(){crossX.setAttribute('opacity',0);dot.setAttribute('opacity',0);readout.style.opacity=0;}
+  hit.addEventListener('mousemove',move); hit.addEventListener('mouseleave',leave);
+  hit.addEventListener('touchmove',e=>{if(e.touches[0]){move(e.touches[0]);e.preventDefault();}},{passive:false});
+  hit.addEventListener('touchend',leave);
+
+  host.appendChild(svg);
+}
+
+/* ---------- spectrum reference strip (lanes) ---------- */
+function drawSpectrum(){
+  const host=document.getElementById('spectrumPlot'); host.innerHTML='';
+  const W=host.clientWidth||1000, laneH=26, gap=8, padL=8, padR=14, padT=8, padB=24;
+  const lanes=BANDS.length; const H=padT+lanes*laneH+(lanes-1)*gap+padB;
+  const x0=padL, w=W-padL-padR;
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,width:W,height:H});
+  const muted=cssv('--muted'), grid=cssv('--grid'), line=cssv('--line');
+  // decade gridlines
+  DECADES.forEach(d=>{const x=fx(d,x0,w);
+    svg.appendChild(el('line',{x1:x,y1:padT,x2:x,y2:padT+lanes*laneH+(lanes-1)*gap,stroke:grid,'stroke-width':1}));
+    const t=el('text',{x:x,y:H-8,fill:muted,'font-size':10,'text-anchor':'middle',class:'axis-txt'});
+    t.textContent=decLabel(d); svg.appendChild(t);});
+  const hz=el('text',{x:x0+w,y:H-8,fill:muted,'font-size':10,'text-anchor':'end',class:'axis-txt'});
+  hz.textContent='Hz'; svg.appendChild(hz);
+
+  BANDS.forEach((b,i)=>{
+    const y=padT+i*(laneH+gap); const col=cssv(b.v);
+    let a,bb;
+    if(b.range==='line'){ a=lineF0*0.85; bb=lineF0*1.18; }
+    else { a=b.range[0]; bb=b.range[1]; }
+    const xa=fx(Math.max(a,FMIN),x0,w), xb=fx(Math.min(bb,FMAX),x0,w);
+    svg.appendChild(el('rect',{x:xa,y:y,width:Math.max(3,xb-xa),height:laneH,rx:5,
+      fill:`color-mix(in srgb, ${col} 26%, transparent)`,stroke:col,'stroke-width':1.3}));
+    // label inside/next to bar
+    const cx=(xa+xb)/2, inside=(xb-xa)>140;
+    const lt=el('text',{x: inside?cx: xb+8, y:y+laneH/2+4, fill:cssv('--ink'),
+      'font-size':12,'font-weight':600,'text-anchor':inside?'middle':'start'});
+    lt.textContent=b.label; svg.appendChild(lt);
+    if(b.range!=='line'){
+      const rng=el('text',{x:xa+6,y:y+laneH/2+4,fill:cssv('--ink-2'),'font-size':9.5,
+        class:'axis-txt','text-anchor':'start',opacity: inside?0:0}); // keep clean
+    }
+  });
+  host.appendChild(svg);
+
+  // legend
+  const leg=document.getElementById('specLegend'); leg.innerHTML='';
+  BANDS.forEach(b=>{
+    const rTxt = b.range==='line'? `${lineF0} Hz` : `${b.range[0]}–${b.range[1]} Hz`;
+    const it=document.createElement('div'); it.className='it';
+    it.innerHTML=`<span class="sw" style="background:${cssv(b.v)}"></span>${b.note} <code>${rTxt}</code>`;
+    leg.appendChild(it);
+  });
+}
+
+/* ---------- filter card definitions ---------- */
+const CARDS=[
+ {type:'hp', title:'High-Pass Filter', tag:'hp', tagTxt:'HPF',
+  role:'Passes fast changes, blocks slow ones. The workhorse for cleaning up the low end of a recording.',
+  params:{fc:0.5},
+  sliders:[{k:'fc',label:'f_c',min:0.05,max:50,fmt:hz}],
+  zones:[[0.01,0.5,'--b-drift',22]],
+  markers:p=>[{f:p.fc,label:'f_c '+hz(p.fc)}],
+  interp:['<b>Removes DC</b> — kills the constant electrode half-cell offset that would otherwise saturate the amplifier.',
+          '<b>Reduces baseline drift</b> — slow wander from sweat, temperature and electrode polarization sits below f_c and is attenuated.',
+          '<b>Rejects slow movement artifacts</b> — respiration and gross motion live in the sub-hertz region the HPF suppresses.']},
+ {type:'lp', title:'Low-Pass Filter', tag:'lp', tagTxt:'LPF',
+  role:'Passes slow changes, blocks fast ones. Sets the top edge of the usable band.',
+  params:{fc:150},
+  sliders:[{k:'fc',label:'f_c',min:5,max:500,fmt:hz}],
+  zones:[[500,1000,'--b-hf',22]],
+  markers:p=>[{f:p.fc,label:'f_c '+hz(p.fc)}],
+  interp:['<b>Removes high-frequency noise</b> — thermal, RF and switching noise above f_c is rolled off.',
+          '<b>Limits bandwidth</b> — defines the highest frequency the system reproduces, and sets the anti-alias ceiling before sampling.',
+          'Trade-off: too low an f_c blunts sharp physiological features (e.g. the QRS complex, EMG spikes).']},
+ {type:'bp', title:'Band-Pass Filter', tag:'bp', tagTxt:'BPF',
+  role:'A high-pass and a low-pass in series — keeps only the middle.',
+  params:{fl:0.5,fh:40},
+  sliders:[{k:'fl',label:'f_low',min:0.05,max:20,fmt:hz},{k:'fh',label:'f_high',min:20,max:500,fmt:hz}],
+  zones:[[0.5,40,'--b-ecg',20]],
+  markers:p=>[{f:p.fl,label:hz(p.fl)},{f:p.fh,label:hz(p.fh)}],
+  interp:['<b>HPF + LPF behavior</b> — the low edge strips DC and drift, the high edge strips HF noise, in one response.',
+          '<b>Isolates the useful physiological band</b> — e.g. 0.5–40 Hz for ECG/EEG monitoring, ~20–500 Hz for surface EMG.',
+          'The passband should bracket the signal of interest and exclude both neighbours: drift below, noise and line hum above.']},
+ {type:'no', title:'Notch Filter', tag:'no', tagTxt:'NOTCH',
+  role:'A narrow, deep null at one frequency — leaves everything else intact.',
+  params:{f0:60,Q:30},
+  sliders:[{k:'Q',label:'Q',min:2,max:60,fmt:v=>v.toFixed(0)}],
+  zones:null, lineMark:true,
+  markers:p=>[],
+  interp:['<b>Targets line-frequency interference</b> — the 50/60 Hz mains pickup (and sometimes its harmonics) coupled into leads.',
+          'High Q → narrow, surgical null that spares nearby signal; low Q → wider notch that also erodes real content near f₀.',
+          'A blunt instrument near EMG/EEG: 60 Hz sits inside those bands, so notching there removes signal as well as noise.']},
+];
+
+function hz(v){return v>=1? (v>=1000?'1 kHz': (v>=100? v.toFixed(0): v.toFixed(1))+' Hz') : v.toFixed(2)+' Hz';}
+// slider log mapping
+function sVal(min,max,t){return Math.pow(10,L10(min)+t/1000*(L10(max)-L10(min)));}
+function sPos(min,max,v){return (L10(v)-L10(min))/(L10(max)-L10(min))*1000;}
+
+const cardEls=[];
+function buildCards(){
+  const root=document.getElementById('cards'); root.innerHTML=''; cardEls.length=0;
+  CARDS.forEach(c=>{
+    const card=document.createElement('div'); card.className='card';
+    const sliders=c.sliders.map(s=>`
+      <div class="ctl">
+        <label for="${c.type}-${s.k}">${s.label}</label>
+        <input type="range" id="${c.type}-${s.k}" min="0" max="1000" step="1"
+          value="${sPos(s.min,s.max,c.params[s.k])}" data-k="${s.k}" data-min="${s.min}" data-max="${s.max}">
+        <output id="${c.type}-${s.k}-o">${s.fmt(c.params[s.k])}</output>
+      </div>`).join('');
+    card.innerHTML=`
+      <div class="top">
+        <div><h3>${c.title}</h3><p class="role">${c.role}</p></div>
+        <span class="tag ${c.tag}">${c.tagTxt}</span>
+      </div>
+      <div class="plotwrap"><div class="readout"></div></div>
+      <div class="controls">${sliders}</div>
+      <div class="interp"><div class="h">Biomedical interpretation</div>
+        <ul>${c.interp.map(i=>`<li>${i}</li>`).join('')}</ul></div>`;
+    root.appendChild(card);
+    const plotHost=card.querySelector('.plotwrap');
+    const st={card:c, host:plotHost};
+    cardEls.push(st);
+    // wire sliders
+    card.querySelectorAll('input[type=range]').forEach(inp=>{
+      inp.addEventListener('input',()=>{
+        const k=inp.dataset.k, mn=+inp.dataset.min, mx=+inp.dataset.max;
+        let v=sVal(mn,mx,+inp.value); c.params[k]=v;
+        const s=c.sliders.find(x=>x.k===k);
+        card.querySelector('#'+c.type+'-'+k+'-o').textContent=s.fmt(v);
+        renderCard(st);
+      });
+    });
+  });
+}
+function renderCard(st){
+  const c=st.card;
+  drawPlot(st.host, c.type, c.params, {
+    zones:c.zones, lineMark:c.lineMark,
+    markers:c.markers(c.params)
+  });
+}
+function renderAll(){ drawSpectrum(); cardEls.forEach(renderCard); }
+
+/* ---------- controls ---------- */
+document.getElementById('axisSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  axisMode=b.dataset.mode;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  cardEls.forEach(renderCard);
+});
+document.getElementById('lineSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  lineF0=+b.dataset.f0;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  // update notch f0 to line frequency
+  const notch=CARDS.find(c=>c.type==='no'); notch.params.f0=lineF0;
+  renderAll();
+});
+document.getElementById('themeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  const th=b.dataset.th; document.documentElement.setAttribute('data-theme',th);
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  requestAnimationFrame(renderAll);
+});
+
+let rt;
+window.addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(renderAll,120);});
+
+buildCards();
+renderAll();
+</script>
+</body>
+</html>
