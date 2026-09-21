@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Arterial Stenosis Hemodynamics</title>
+<meta name="description" content="Interactive reduced-order CFD teaching tool for blood flow through an atherosclerotic (stenotic) artery: velocity, pressure, and wall shear stress.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1220; --panel:#111c30; --panel-2:#16233b; --panel-3:#1b2b45;
+    --line:rgba(148,163,184,.16); --line-2:rgba(148,163,184,.28);
+    --ink:#e7eef8; --ink-dim:#9fb0c9; --ink-mut:#6c7f9c;
+    --accent:#38bdf8; --accent-2:#34d399; --accent-3:#a78bfa;
+    --good:#34d399; --warn:#fbbf24; --crit:#f87171;
+    --plaque:#c9a24b; --plaque-2:#a37f2e; --tissue:#2a3450; --tissue-2:#222c44;
+    --radius:14px; --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--sans);
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 600px at 78% -8%, rgba(56,189,248,.08), transparent 60%),
+                     radial-gradient(900px 500px at 8% 108%, rgba(52,211,153,.06), transparent 60%);
+    background-attachment:fixed;
+  }
+  .wrap{max-width:1240px; margin:0 auto; padding-block:22px 56px; padding-inline:16px}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header.top{display:flex; flex-direction:column; gap:10px; margin-bottom:20px}
+  .crumb{font-size:12px; color:var(--ink-mut)}
+  .title-row{display:flex; flex-wrap:wrap; align-items:baseline; gap:12px}
+  h1{font-size:clamp(22px,3.4vw,30px); font-weight:700; letter-spacing:-.02em; margin:0; text-wrap:balance}
+  .sub{color:var(--ink-dim); max-width:70ch}
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px}
+  .chip{font-size:11px; font-weight:600; letter-spacing:.02em; padding:4px 9px; border-radius:999px;
+        border:1px solid var(--line-2); color:var(--ink-dim); background:rgba(255,255,255,.02)}
+  .chip.warn{color:#0b1220; background:linear-gradient(180deg,#fde68a,#fbbf24); border-color:transparent}
+
+  .banner{display:none; align-items:flex-start; gap:10px; margin-bottom:16px; padding:11px 14px;
+          border-radius:12px; border:1px solid rgba(251,191,36,.4); background:rgba(251,191,36,.09); color:#fde9b0; font-size:13px}
+  .banner.show{display:flex}
+  .banner b{color:#fde68a}
+
+  .layout{display:grid; grid-template-columns:minmax(0,1fr) 356px; gap:18px; align-items:start}
+  @media (max-width:940px){ .layout{grid-template-columns:1fr} }
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel-2)); border:1px solid var(--line);
+        border-radius:var(--radius); padding:16px}
+  .card h2{font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 12px}
+  .card h2 .hint{font-weight:500; text-transform:none; letter-spacing:0; color:var(--ink-mut); font-size:12px}
+
+  /* stage */
+  .stage{padding:14px}
+  .toolbar{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:12px}
+  .toggle{font-family:var(--sans); font-size:12px; font-weight:600; color:var(--ink-dim); cursor:pointer;
+          padding:6px 11px; border-radius:9px; border:1px solid var(--line-2); background:rgba(255,255,255,.02);
+          display:inline-flex; align-items:center; gap:7px; user-select:none; transition:.15s}
+  .toggle:hover{border-color:var(--line-2); color:var(--ink)}
+  .toggle .dot{width:9px; height:9px; border-radius:3px; background:var(--ink-mut); transition:.15s}
+  .toggle.on{color:var(--ink); border-color:rgba(56,189,248,.5); background:rgba(56,189,248,.1)}
+  .toggle.on .dot{background:var(--accent)}
+  .toggle[data-k="particles"].on .dot{background:var(--accent-2)}
+  .toggle[data-k="vectors"].on .dot{background:var(--accent-3)}
+  .toggle[data-k="wss"].on .dot{background:#fbbf24}
+  .toggle[data-k="pressure"].on .dot{background:#f472b6}
+
+  .canvas-shell{position:relative; border-radius:11px; overflow:hidden; border:1px solid var(--line); background:#0a1120}
+  canvas#flow{display:block; width:100%; height:auto}
+  .cbar{display:flex; align-items:center; gap:10px; margin-top:11px; font-size:11px; color:var(--ink-dim)}
+  .cbar .grad{flex:1; height:11px; border-radius:6px; border:1px solid var(--line)}
+  .cbar .ticks{display:flex; justify-content:space-between; font-family:var(--mono); color:var(--ink-mut); margin-top:3px}
+  .cbar-wrap{flex:1}
+
+  /* controls */
+  .controls .grp{margin-bottom:15px}
+  .ctl{margin-bottom:13px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl .lab{display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:6px}
+  .ctl .name{font-size:12.5px; font-weight:600; color:var(--ink)}
+  .ctl .name small{color:var(--ink-mut); font-weight:500}
+  .ctl .val{font-family:var(--mono); font-size:12.5px; font-weight:600; color:var(--accent)}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:5px; border-radius:99px;
+                    background:var(--panel-3); outline:none; cursor:pointer}
+  input[type=range]:disabled{opacity:.4; cursor:not-allowed}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+     background:var(--accent); border:2px solid #0b1220; box-shadow:0 0 0 1px var(--accent); cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:14px; height:14px; border-radius:50%; background:var(--accent);
+     border:2px solid #0b1220; box-shadow:0 0 0 1px var(--accent); cursor:pointer}
+  input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px rgba(56,189,248,.5)}
+
+  .seg{display:flex; gap:4px; padding:3px; border-radius:10px; border:1px solid var(--line-2); background:rgba(255,255,255,.02)}
+  .seg button{flex:1; font-family:var(--sans); font-size:12.5px; font-weight:600; color:var(--ink-dim);
+              padding:7px; border:none; border-radius:7px; background:transparent; cursor:pointer; transition:.15s}
+  .seg button.on{background:var(--accent); color:#06121f}
+  .btn-reset{width:100%; margin-top:4px; font-family:var(--sans); font-size:12.5px; font-weight:600; color:var(--ink-dim);
+             padding:8px; border-radius:9px; border:1px solid var(--line-2); background:transparent; cursor:pointer}
+  .btn-reset:hover{color:var(--ink); border-color:var(--line-2)}
+
+  /* readouts */
+  .kpis{display:grid; grid-template-columns:repeat(2,1fr); gap:9px}
+  .kpi{background:var(--panel-3); border:1px solid var(--line); border-radius:11px; padding:10px 11px}
+  .kpi .k{font-size:10.5px; font-weight:600; letter-spacing:.02em; color:var(--ink-mut); text-transform:uppercase; display:flex; align-items:center; gap:5px}
+  .kpi .v{font-family:var(--mono); font-size:18px; font-weight:600; color:var(--ink); margin-top:3px; line-height:1.15; font-variant-numeric:tabular-nums}
+  .kpi .u{font-size:11px; color:var(--ink-dim); font-weight:500; margin-left:2px}
+  .kpi .v2{font-family:var(--mono); font-size:11px; color:var(--ink-mut); margin-top:2px}
+  .tag{font-size:9.5px; font-weight:700; letter-spacing:.03em; padding:2px 6px; border-radius:6px; text-transform:uppercase}
+  .tag.good{background:rgba(52,211,153,.16); color:#6ee7b7}
+  .tag.warn{background:rgba(251,191,36,.16); color:#fcd34d}
+  .tag.crit{background:rgba(248,113,113,.18); color:#fca5a5}
+  .kpi.span{grid-column:1/-1}
+
+  /* plots */
+  .plots{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:18px}
+  @media (max-width:820px){ .plots{grid-template-columns:1fr} }
+  .plot h3{font-size:12.5px; font-weight:700; margin:0 0 2px; color:var(--ink)}
+  .plot p{font-size:11.5px; color:var(--ink-mut); margin:0 0 9px}
+  .plot canvas{display:block; width:100%; height:auto; border-radius:9px; border:1px solid var(--line); background:#0a1120}
+  .legend{display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; font-size:11px; color:var(--ink-dim)}
+  .legend span{display:inline-flex; align-items:center; gap:5px}
+  .legend i{width:13px; height:3px; border-radius:2px; display:inline-block}
+
+  /* info */
+  .info{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:18px}
+  @media (max-width:820px){ .info{grid-template-columns:1fr} }
+  .info h2{margin-bottom:10px}
+  .expl{font-size:12.5px; color:var(--ink-dim)}
+  .expl .live{background:rgba(56,189,248,.08); border:1px solid rgba(56,189,248,.25); border-radius:10px;
+              padding:10px 12px; margin-bottom:12px; color:var(--ink)}
+  .expl dl{margin:0; display:grid; gap:9px}
+  .expl dt{font-weight:700; color:var(--ink); font-size:12.5px}
+  .expl dd{margin:2px 0 0; color:var(--ink-dim)}
+  .eq{font-family:var(--mono); font-size:12.5px; background:var(--panel-3); border:1px solid var(--line);
+      border-radius:9px; padding:9px 11px; margin:8px 0; color:var(--ink); overflow-x:auto}
+  .eq .cm{color:var(--ink-mut)}
+  ul.tight{margin:0; padding-left:18px; color:var(--ink-dim); font-size:12.5px}
+  ul.tight li{margin-bottom:7px}
+  .model-legend{display:grid; gap:10px; font-size:12.5px}
+  .ml{display:flex; gap:9px; align-items:flex-start}
+  .ml .pin{flex:none; width:11px; height:11px; border-radius:4px; margin-top:3px}
+  .ml.calc .pin{background:var(--accent-2)}
+  .ml.est .pin{background:var(--warn)}
+  .ml.qual .pin{background:var(--accent-3)}
+  .ml b{color:var(--ink)}
+  .ml span{color:var(--ink-dim)}
+  footer{margin-top:30px; font-size:11.5px; color:var(--ink-mut); border-top:1px solid var(--line); padding-top:16px}
+  .disc{font-size:11.5px; color:var(--ink-mut); margin-top:10px; font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="crumb"><a href="../index.html">← All courses</a> · Biofluid Mechanics</div>
+    <div class="title-row">
+      <h1>Arterial Stenosis Hemodynamics</h1>
+    </div>
+    <p class="sub">An interactive reduced-order model of blood flow through an atherosclerotic artery. Adjust the plaque
+      and blood properties and watch velocity, pressure, and wall shear stress respond in real time — built on
+      conservation of mass, Bernoulli, and Poiseuille relations derived from the incompressible Navier–Stokes equations.</p>
+    <div class="chips">
+      <span class="chip">Longitudinal 2-D section</span>
+      <span class="chip">Newtonian · incompressible</span>
+      <span class="chip">Reduced-order (not clinical CFD)</span>
+      <span class="chip">Teaching tool</span>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="layout">
+    <!-- ================= STAGE ================= -->
+    <section class="card stage">
+      <div class="toolbar" id="toolbar">
+        <span class="toggle on" data-k="heatmap"><span class="dot"></span>Velocity heat map</span>
+        <span class="toggle on" data-k="particles"><span class="dot"></span>Particles / streamlines</span>
+        <span class="toggle" data-k="vectors"><span class="dot"></span>Velocity vectors</span>
+        <span class="toggle on" data-k="wss"><span class="dot"></span>Wall shear stress</span>
+        <span class="toggle" data-k="pressure"><span class="dot"></span>Pressure band</span>
+      </div>
+      <div class="canvas-shell">
+        <canvas id="flow"></canvas>
+      </div>
+      <div class="cbar">
+        <span>Velocity</span>
+        <div class="cbar-wrap">
+          <div class="grad" id="cbarGrad"></div>
+          <div class="ticks"><span>0</span><span id="cbMid">–</span><span id="cbMax">–</span></div>
+        </div>
+        <span style="font-family:var(--mono)">m/s</span>
+      </div>
+      <p class="disc">Bright throat = flow acceleration (continuity). Converging particles show streamline crowding;
+        slow/reversed dim particles downstream mark predicted flow separation. Wall tint: warm = high shear near the
+        throat, magenta = low/disturbed shear in the recirculation zone.</p>
+    </section>
+
+    <!-- ================= CONTROLS + READOUTS ================= -->
+    <aside style="display:flex; flex-direction:column; gap:18px">
+      <section class="card controls">
+        <h2>Controls <span class="hint">— live</span></h2>
+
+        <div class="grp">
+          <div class="ctl">
+            <div class="lab"><span class="name">Stenosis severity <small>(% area reduction)</small></span><span class="val" id="v_sev">50%</span></div>
+            <input type="range" id="s_sev" min="0" max="90" step="1" value="50">
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Plaque asymmetry <small>(concentric → eccentric)</small></span><span class="val" id="v_ecc">0%</span></div>
+            <input type="range" id="s_ecc" min="0" max="100" step="1" value="0">
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Inlet velocity <small>(mean)</small></span><span class="val" id="v_uin">0.30 m/s</span></div>
+            <input type="range" id="s_uin" min="0.05" max="1.50" step="0.01" value="0.30">
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Blood dynamic viscosity <small>(μ)</small></span><span class="val" id="v_mu">0.0035 Pa·s</span></div>
+            <input type="range" id="s_mu" min="0.002" max="0.010" step="0.0001" value="0.0035">
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="ctl">
+            <div class="lab"><span class="name">Artery diameter</span><span class="val" id="v_dia">5.0 mm</span></div>
+            <input type="range" id="s_dia" min="2" max="10" step="0.1" value="5.0">
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Plaque length</span><span class="val" id="v_lp">15 mm</span></div>
+            <input type="range" id="s_lp" min="4" max="40" step="1" value="15">
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Blood density <small>(ρ)</small></span><span class="val" id="v_rho">1060 kg/m³</span></div>
+            <input type="range" id="s_rho" min="1000" max="1100" step="1" value="1060">
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="ctl">
+            <div class="lab"><span class="name">Inlet waveform</span></div>
+            <div class="seg" id="modeSeg">
+              <button data-mode="steady" class="on">Steady</button>
+              <button data-mode="pulsatile">Pulsatile</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <div class="lab"><span class="name">Heart rate</span><span class="val" id="v_bpm">70 BPM</span></div>
+            <input type="range" id="s_bpm" min="40" max="140" step="1" value="70" disabled>
+          </div>
+        </div>
+        <button class="btn-reset" id="reset">Reset to physiological example</button>
+      </section>
+
+      <section class="card">
+        <h2>Live readouts <span class="hint" id="phaseHint"></span></h2>
+        <div class="kpis" id="kpis">
+          <div class="kpi"><div class="k">Reynolds <span id="reTag" class="tag good">lam</span></div><div class="v" id="k_re">–</div><div class="v2">throat Re <span id="k_reth">–</span></div></div>
+          <div class="kpi"><div class="k">Peak velocity</div><div class="v" id="k_vmax">–<span class="u">m/s</span></div><div class="v2">centerline, throat</div></div>
+          <div class="kpi"><div class="k">Mean inlet vel.</div><div class="v" id="k_uin">–<span class="u">m/s</span></div><div class="v2" id="k_uinst">—</div></div>
+          <div class="kpi"><div class="k">Pressure drop Δp</div><div class="v" id="k_dp">–<span class="u">mmHg</span></div><div class="v2" id="k_dppa">— Pa</div></div>
+          <div class="kpi"><div class="k">Max wall shear</div><div class="v" id="k_wss">–<span class="u">Pa</span></div><div class="v2">at throat</div></div>
+          <div class="kpi"><div class="k">Flow rate Q</div><div class="v" id="k_q">–<span class="u">mL/s</span></div><div class="v2" id="k_qlm">—</div></div>
+          <div class="kpi"><div class="k">Min lumen dia.</div><div class="v" id="k_dmin">–<span class="u">mm</span></div><div class="v2" id="k_area">— area red.</div></div>
+          <div class="kpi"><div class="k">Womersley α</div><div class="v" id="k_wo">–</div><div class="v2">unsteadiness</div></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ================= PLOTS ================= -->
+  <div class="plots">
+    <div class="card plot">
+      <h3>Velocity vs. axial position</h3>
+      <p>Cross-sectional mean velocity U(x) = Q / A(x)</p>
+      <canvas id="pV"></canvas>
+      <div class="legend"><span><i style="background:#38bdf8"></i>mean U(x)</span><span><i style="background:rgba(201,162,75,.9)"></i>plaque</span></div>
+    </div>
+    <div class="card plot">
+      <h3>Pressure vs. axial position</h3>
+      <p>Static pressure relative to inlet</p>
+      <canvas id="pP"></canvas>
+      <div class="legend"><span><i style="background:#f472b6"></i>p(x)</span><span><i style="background:rgba(201,162,75,.9)"></i>plaque</span></div>
+    </div>
+    <div class="card plot">
+      <h3>Wall shear stress vs. axial position</h3>
+      <p>τ<sub>w</sub> on each wall (sign = flow direction)</p>
+      <canvas id="pW"></canvas>
+      <div class="legend"><span><i style="background:#fbbf24"></i>top wall</span><span><i style="background:#34d399"></i>bottom wall</span></div>
+    </div>
+  </div>
+
+  <!-- ================= INFO ================= -->
+  <div class="info">
+    <section class="card">
+      <h2>What each control does</h2>
+      <div class="expl">
+        <div class="live" id="live">—</div>
+        <dl>
+          <dt>↑ Stenosis severity</dt>
+          <dd>Smaller lumen area → higher throat velocity (continuity) → larger pressure loss and higher wall shear stress at the throat.</dd>
+          <dt>↑ Plaque asymmetry</dt>
+          <dd>Shifts the high-velocity jet toward one wall; drives an asymmetric velocity profile and one-sided downstream separation.</dd>
+          <dt>↑ Inlet velocity</dt>
+          <dd>Raises Reynolds number, increases the stenotic jet velocity, and amplifies velocity gradients and pressure losses.</dd>
+          <dt>↑ Viscosity</dt>
+          <dd>Lowers Reynolds number and damps flow disturbances, while increasing viscous (Poiseuille) resistance and pressure loss.</dd>
+          <dt>↑ Diameter / ↓ severity</dt>
+          <dd>Larger lumen lowers velocity for the same flow; Re = ρVD/μ scales directly with diameter.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Governing equations &amp; model</h2>
+      <div class="expl">
+        <p style="margin-top:0">Incompressible Navier–Stokes is the physical basis:</p>
+        <div class="eq">∇ · u = 0<br>ρ(∂u/∂t + u·∇u) = −∇p + μ∇²u</div>
+        <p>A full 2-D/3-D solver is too heavy for a live browser tool, so this uses a <b>quasi-1-D reduced-order model</b>:</p>
+        <div class="eq"><span class="cm"># continuity (axisymmetric)</span><br>U(x) = U₀ (D / H(x))²<br><span class="cm"># Reynolds number</span><br>Re = ρ V D / μ<br><span class="cm"># wall shear (Poiseuille)</span><br>τ_w = 8 μ U / H<br><span class="cm"># viscous loss</span><br>dp/dx = 32 μ U / H²<br><span class="cm"># throat + expansion loss</span><br>Δp = ½ρ(U_t²−U₀²) + ½ρ(U_t−U₀)²</div>
+        <p style="margin-bottom:0"><b>Blood as a Newtonian fluid</b> is the default. Real blood is <b>shear-thinning</b> (non-Newtonian): apparent
+          viscosity rises sharply at low shear rate (&lt; ~100 s⁻¹, e.g. venous flow, recirculation zones) as red cells
+          aggregate — a Carreau–Yasuda or Casson model captures this. In fast arterial flow the Newtonian assumption is reasonable.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>How to read the numbers</h2>
+      <div class="model-legend">
+        <div class="ml calc"><span class="pin"></span><span><b>Directly calculated</b> from governing equations: continuity U(x), Reynolds number, flow rate, min lumen diameter, % area reduction, Poiseuille wall shear stress, viscous pressure loss.</span></div>
+        <div class="ml est"><span class="pin"></span><span><b>Estimated</b> with simplified models: Bernoulli throat pressure dip, Borda–Carnot expansion loss, separation/recirculation extent, Womersley number, per-wall shear asymmetry.</span></div>
+        <div class="ml qual"><span class="pin"></span><span><b>Qualitative only</b> (visualization): particle pacing, jet-spreading shape, recirculation vortex rendering, heat-map smoothing.</span></div>
+      </div>
+      <p class="disc">This is a conceptual teaching model. It is <b>not</b> a validated, patient-specific clinical CFD simulation and
+        should not be used for diagnosis. Default values are adjustable examples, not universal physiological constants.</p>
+    </section>
+  </div>
+
+  <footer>
+    Biofluid Mechanics · Arterial stenosis hemodynamics · part of the
+    <a href="https://github.com/jonnyterrero/BME-Visualizations">BME-Visualizations</a> catalog.
+    Model: quasi-1-D reduction of the incompressible Navier–Stokes equations.
+  </footer>
+</div>
+<script>
+"use strict";
+/* ============================================================================
+   Arterial Stenosis Hemodynamics — reduced-order model + visualization
+   All physics in SI units. See in-page notes for calculated vs. estimated.
+   ========================================================================== */
+
+/* ---------- helpers ---------- */
+const clamp=(x,a,b)=>x<a?a:x>b?b:x;
+const mix=(a,b,t)=>a+(b-a)*t;
+const smoothstep=(a,b,x)=>{ if(a===b) return x<a?0:1; const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const fmt=(x,d=2)=>{ if(!isFinite(x))return '—'; const a=Math.abs(x); if(a>=1000)return Math.round(x).toLocaleString(); if(a>=100)return x.toFixed(Math.min(1,d)); return x.toFixed(d); };
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- color ramps ---------- */
+const VEL_STOPS=[[0,12,28,90],[.15,28,100,200],[.33,20,160,175],[.50,60,195,120],[.66,205,200,70],[.82,240,150,55],[1,225,70,58]];
+const PRS_STOPS=[[0,40,110,180],[.5,120,132,152],[1,214,76,92]];
+function rampRGB(stops,t){ t=clamp(t,0,1); for(let i=0;i<stops.length-1;i++){ const a=stops[i],b=stops[i+1]; if(t<=b[0]){ const f=(t-a[0])/(b[0]-a[0]||1); return [Math.round(mix(a[1],b[1],f)),Math.round(mix(a[2],b[2],f)),Math.round(mix(a[3],b[3],f))]; } } const l=stops[stops.length-1]; return [l[1],l[2],l[3]]; }
+const velCSS=t=>{ const c=rampRGB(VEL_STOPS,t); return `rgb(${c[0]},${c[1]},${c[2]})`; };
+document.getElementById('cbarGrad').style.background='linear-gradient(90deg,'+VEL_STOPS.map(s=>velCSS(s[0])+' '+(s[0]*100).toFixed(0)+'%').join(',')+')';
+
+/* ---------- state ---------- */
+const DEFAULTS={ sevPct:50, ecc:0, uin:0.30, mu:0.0035, dia:5.0, lp:15, rho:1060, mode:'steady', bpm:70 };
+const state=Object.assign({},DEFAULTS);
+const show={ heatmap:true, particles:true, vectors:false, wss:true, pressure:false };
+
+/* ---------- pulsatile waveform (normalized to unit mean) ---------- */
+function pulseShape(phi){ // one cardiac cycle, phi in [0,1)
+  const sys=Math.exp(-Math.pow((phi-0.16)/0.075,2));      // systolic ejection
+  const dic=0.32*Math.exp(-Math.pow((phi-0.36)/0.055,2)); // dicrotic bump
+  return sys+dic+0.13;                                     // + diastolic baseline
+}
+let PULSE_MEAN=(()=>{ let s=0,n=400; for(let i=0;i<n;i++) s+=pulseShape(i/n); return s/n; })();
+
+/* ============================================================================
+   MODEL  — build all geometry + fields for a given instantaneous inlet velocity
+   ========================================================================== */
+function buildModel(Uinst){
+  const s=state;
+  const D=s.dia/1000, R=D/2, Lp=s.lp/1000, mu=s.mu, rho=s.rho;
+  const L=Math.max(0.07,14*D);           // vessel length shown
+  const xc=0.40*L;                        // throat (leaves room downstream)
+  const sev=clamp(s.sevPct/100,0,0.9);
+  const A0=Math.PI/4*D*D;
+  const delta=D*(1-Math.sqrt(Math.max(1e-4,1-sev)));  // total lumen intrusion at throat
+  const topI=delta*(1+s.ecc)/2, botI=delta*(1-s.ecc)/2;
+
+  const shape=x=>{ const u=Math.abs(x-xc); if(u>=Lp/2) return 0; return 0.5*(1+Math.cos(2*Math.PI*(x-xc)/Lp)); };
+  const Hf =x=>D-delta*shape(x);
+  const yT =x=>R-topI*shape(x);
+  const yB =x=>-R+botI*shape(x);
+  const ycf=x=>0.5*(yT(x)+yB(x));
+  const Umf=x=>Uinst*Math.pow(D/Hf(x),2);   // [CALC] continuity
+
+  const Hth=Hf(xc), Uth=Umf(xc);
+  const Ljet=Math.max(2*Hth,4*Hth+0.5*Lp);
+  const Ucf=x=> x<=xc? 2*Umf(x) : 2*Uinst+(2*Uth-2*Uinst)*Math.exp(-(x-xc)/Ljet); // centerline (parabolic peak=2·mean)
+  const bjet=x=> x<=xc? Hf(x)/2 : Math.max(Hth/2, Hth/2+0.13*(x-xc));
+  const yjet=x=> x<=xc? ycf(x) : ycf(xc)*Math.exp(-(x-xc)/(1.6*Ljet));
+
+  const Re_in=rho*Uinst*D/mu;               // [CALC]
+  const Re_th=rho*Uth*Hth/mu;               // [CALC]
+  const recirc=smoothstep(0.35,0.80,sev)*smoothstep(220,1100,Re_th); // [EST] separation likelihood 0..1
+  const Lrec=recirc*(2.6*Hth);
+
+  /* ---- field speed (viz): axial velocity, incl. jet + recirculation ---- */
+  function speedAt(x,y){
+    const yt=yT(x), yb=yB(x);
+    if(y>yt||y<yb) return null;
+    const half=Hf(x)/2, yc=ycf(x);
+    const eta=(y-yc)/half;
+    const dev=Math.max(0,2*Umf(x)*(1-eta*eta));
+    const t = x<=xc?0:smoothstep(xc,xc+0.12*Lp,x);
+    const sig=bjet(x)/1.4;
+    const jet=Ucf(x)*Math.exp(-0.5*Math.pow((y-yjet(x))/sig,2));
+    let u=dev*(1-t)+jet*t;
+    if(recirc>0 && x>xc && x<xc+Lrec){
+      const zoneF=Math.sin(Math.PI*clamp((x-xc)/Lrec,0,1));
+      const nearTop=(yt-y)/half, nearBot=(y-yb)/half;
+      let wallProx;
+      if(s.ecc>0.05) wallProx=clamp(1-nearTop/0.5,0,1);            // plaque wall (top)
+      else wallProx=Math.max(clamp(1-nearTop/0.4,0,1),clamp(1-nearBot/0.4,0,1));
+      const rev=-0.35*Uinst*recirc*zoneF*wallProx;
+      u=u*(1-0.7*wallProx*zoneF)+rev;
+    }
+    return u;
+  }
+  const dfun=(f,x)=>{ const h=L*0.0025; return (f(x+h)-f(x-h))/(2*h); };
+
+  /* ---- sampled arrays for plots + scalar outputs ---- */
+  const N=180, dx=L/(N-1);
+  const xs=new Array(N), Um=new Array(N), Hh=new Array(N), pv=new Array(N), wT=new Array(N), wB=new Array(N);
+  const g=new Array(N); // dp/dx viscous
+  for(let i=0;i<N;i++){ const x=i*dx; xs[i]=x; Um[i]=Umf(x); Hh[i]=Hf(x); g[i]=32*mu*Um[i]/(Hh[i]*Hh[i]); }
+  // viscous cumulative loss (trapezoid) [CALC]
+  const Lv=new Array(N); Lv[0]=0;
+  for(let i=1;i<N;i++) Lv[i]=Lv[i-1]+0.5*(g[i]+g[i-1])*dx;
+  // Borda–Carnot expansion loss, ramped downstream [EST]
+  const LexpTot=0.5*rho*Math.pow(Uth-Uinst,2);
+  const xExpEnd=xc+Math.min(Lp,0.6*(L-xc));
+  // dynamic (Bernoulli) + losses -> relative static pressure
+  let pmin=0, wssMax=0;
+  for(let i=0;i<N;i++){
+    const x=xs[i];
+    const dyn=0.5*rho*(Uinst*Uinst-Um[i]*Um[i]);         // [EST] Bernoulli
+    const Lexp=LexpTot*smoothstep(xc,xExpEnd,x);
+    pv[i]=dyn-Lv[i]-Lexp;
+    if(pv[i]<pmin)pmin=pv[i];
+    // per-wall shear [CALC base, EST asymmetry]
+    const base=8*mu*Um[i]/Hh[i];
+    const zoneF=(recirc>0&&x>xc&&x<xc+Lrec)?Math.sin(Math.PI*clamp((x-xc)/Lrec,0,1)):0;
+    const jetImp=(x>xc)?clamp(Ucf(x)/(2*Uinst)-1,0,2):0;
+    if(s.ecc>0.05){ wT[i]=base*(1-1.9*recirc*zoneF); wB[i]=base*(1+0.5*jetImp*(1-0.3*zoneF)); }
+    else { wT[i]=base*(1-1.2*recirc*zoneF); wB[i]=wT[i]; }
+    wssMax=Math.max(wssMax,Math.abs(wT[i]),Math.abs(wB[i]));
+  }
+  const dpTot=-pv[N-1];                                    // inlet→outlet drop
+  const Q=A0*Uinst;                                        // [CALC]
+  const omega=2*Math.PI*s.bpm/60;
+  const womersley=R*Math.sqrt(omega*rho/mu);               // [EST]
+
+  return { D,R,Lp,L,xc,sev,A0,mu,rho, shape,Hf,yT,yB,ycf,Umf,Ucf,bjet,yjet,speedAt,dfun,
+           Hth,Uth,Ljet,Re_in,Re_th,recirc,Lrec,Uinst, xs,Um,Hh,pv,wT,wB, dx,N,
+           Vmax:2*Uth, dpTot, dpMin:pmin, wssMax, Q, womersley, xExpEnd };
+}
+
+/* ============================================================================
+   CANVAS setup
+   ========================================================================== */
+function fit(cv,cssH){ const r=Math.min(2,window.devicePixelRatio||1); const w=cv.clientWidth||cv.parentElement.clientWidth; cv.width=Math.round(w*r); cv.height=Math.round(cssH*r); const ctx=cv.getContext('2d'); ctx.setTransform(r,0,0,r,0,0); return {ctx,w,h:cssH}; }
+const flow=document.getElementById('flow');
+let FW=0,FH=0,fctx=null;
+const HM_NX=240,HM_NY=104;
+let hmCanvas=document.createElement('canvas'); hmCanvas.width=HM_NX; hmCanvas.height=HM_NY;
+let hmCtx=hmCanvas.getContext('2d'); let hmImg=hmCtx.createImageData(HM_NX,HM_NY);
+
+function sizeMain(){ const cssH=clamp(Math.round(flow.clientWidth*0.44),210,360); const o=fit(flow,cssH); fctx=o.ctx; FW=o.w; FH=o.h; }
+
+/* ---------- coordinate mapping (rebuilt per frame from model L,D) ---------- */
+let MAP=null;
+function makeMap(M){ const pad={l:10,r:10,t:12,b:show.pressure?30:12};
+  const vw=FW-pad.l-pad.r, vh=FH-pad.t-pad.b;
+  const sx=vw/M.L, sy=(vh*0.70)/M.D, cy=pad.t+vh/2;
+  return { pad,vw,vh,sx,sy,cy, X:x=>pad.l+x*sx, Y:y=>cy-y*sy }; }
+
+/* ============================================================================
+   PARTICLES
+   ========================================================================== */
+let particles=[];
+function seedParticles(n){ particles=[]; for(let i=0;i<n;i++) particles.push(newP(Math.random())); }
+function newP(frac){ return { x:0.0001, eta:(Math.random()*1.84-0.92), age:0, seed:frac }; }
+function stepParticles(dt,M){
+  const step=dt*0.13; // maps m/s -> gentle on-screen pace (qualitative)
+  for(const p of particles){
+    // recirc lane on plaque side?
+    const plaqueSide = state.ecc>0.05 ? (p.eta>0.5) : (Math.abs(p.eta)>0.6);
+    let y=M.ycf(p.x)+p.eta*M.Hf(p.x)/2;
+    let u=M.speedAt(p.x,y); if(u===null) u=M.Umf(p.x);
+    p.x += u*step;
+    if(M.recirc>0.15 && plaqueSide && p.x>M.xc && p.x<M.xc+M.Lrec){
+      p.eta += Math.sin(p.age*3.0+p.seed*6.28)*0.010;      // gentle swirl
+      const sgn = p.eta<0?-1:1;                              // keep particle on its wall
+      p.eta = sgn*clamp(Math.abs(p.eta),0.45,0.94);
+    }
+    p.age+=dt;
+    if(p.x>M.L || p.x<0 || p.age>26){ Object.assign(p,newP(Math.random()), {x:0.0001}); }
+  }
+}
+
+/* ============================================================================
+   RENDER main scene
+   ========================================================================== */
+function renderMain(M){
+  const ctx=fctx; MAP=makeMap(M); const {X,Y,sx,sy}=MAP;
+  ctx.clearRect(0,0,FW,FH);
+  ctx.fillStyle='#0a1120'; ctx.fillRect(0,0,FW,FH);
+
+  // vessel outer wall (tissue)
+  const Rwall=M.R*1.16;
+  ctx.fillStyle=getVar('--tissue');
+  ctx.fillRect(MAP.pad.l, Y(Rwall), MAP.vw, Y(-Rwall)-Y(Rwall));
+
+  // lumen path
+  function lumenPath(){ ctx.beginPath(); ctx.moveTo(X(0),Y(M.yT(0)));
+    for(let x=0;x<=M.L+1e-9;x+=M.L/200) ctx.lineTo(X(x),Y(M.yT(x)));
+    for(let x=M.L;x>=0;x-=M.L/200) ctx.lineTo(X(x),Y(M.yB(x))); ctx.closePath(); }
+
+  // ---- heat map ----
+  if(show.heatmap){
+    const d=hmImg.data; const Vc=Math.max(1e-6,M.Vmax);
+    for(let j=0;j<HM_NY;j++){ const yph=M.R-(j+0.5)/HM_NY*(2*M.R);
+      for(let i=0;i<HM_NX;i++){ const xph=(i+0.5)/HM_NX*M.L; const idx=(j*HM_NX+i)*4;
+        const u=M.speedAt(xph,yph);
+        if(u===null){ d[idx+3]=0; continue; }
+        const c=rampRGB(VEL_STOPS,Math.abs(u)/Vc);
+        d[idx]=c[0]; d[idx+1]=c[1]; d[idx+2]=c[2]; d[idx+3]=255;
+      } }
+    hmCtx.putImageData(hmImg,0,0);
+    ctx.save(); lumenPath(); ctx.clip();
+    ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    ctx.drawImage(hmCanvas, X(0), Y(M.R), M.L*sx, (2*M.R)*sy);
+    ctx.restore();
+  } else {
+    ctx.save(); lumenPath(); ctx.clip(); ctx.fillStyle='#0c1730'; ctx.fillRect(0,0,FW,FH); ctx.restore();
+  }
+
+  // ---- plaque bodies (over tissue, outside lumen) ----
+  drawPlaque(ctx,M,X,Y,Rwall);
+
+  // ---- velocity vectors ----
+  if(show.vectors) drawVectors(ctx,M,X,Y,sx,sy);
+
+  // ---- particles ----
+  if(show.particles) drawParticles(ctx,M,X,Y);
+
+  // ---- wall shear coloring on lumen boundary ----
+  drawWalls(ctx,M,X,Y);
+
+  // ---- pressure band ----
+  if(show.pressure) drawPressureBand(ctx,M,X);
+
+  // ---- annotations ----
+  drawAnnotations(ctx,M,X,Y,Rwall);
+
+  // colorbar labels
+  document.getElementById('cbMax').textContent=fmt(M.Vmax,2);
+  document.getElementById('cbMid').textContent=fmt(M.Vmax/2,2);
+}
+
+function drawPlaque(ctx,M,X,Y,Rwall){
+  const grad=ctx.createLinearGradient(0,Y(M.R),0,Y(0));
+  grad.addColorStop(0,getVar('--plaque')); grad.addColorStop(1,getVar('--plaque-2'));
+  // top plaque: between lumen top wall and outer wall, only where intruded
+  ctx.beginPath(); ctx.moveTo(X(0),Y(Rwall));
+  for(let x=0;x<=M.L+1e-9;x+=M.L/200) ctx.lineTo(X(x),Y(Rwall));
+  for(let x=M.L;x>=0;x-=M.L/200) ctx.lineTo(X(x),Y(M.yT(x)));
+  ctx.closePath(); ctx.fillStyle=getVar('--tissue'); ctx.fill();
+  // highlight plaque lesion region top
+  fillLesion(ctx,M,X,Y,'top');
+  // bottom
+  ctx.beginPath(); ctx.moveTo(X(0),Y(-Rwall));
+  for(let x=0;x<=M.L+1e-9;x+=M.L/200) ctx.lineTo(X(x),Y(-Rwall));
+  for(let x=M.L;x>=0;x-=M.L/200) ctx.lineTo(X(x),Y(M.yB(x)));
+  ctx.closePath(); ctx.fillStyle=getVar('--tissue'); ctx.fill();
+  fillLesion(ctx,M,X,Y,'bot');
+}
+function fillLesion(ctx,M,X,Y,side){
+  const x0=M.xc-M.Lp/2, x1=M.xc+M.Lp/2;
+  const wallY = side==='top'? (x=>M.yT(x)) : (x=>M.yB(x));
+  const baseY = side==='top'? M.R : -M.R;
+  ctx.beginPath(); ctx.moveTo(X(x0),Y(baseY));
+  for(let x=x0;x<=x1+1e-9;x+=M.Lp/60) ctx.lineTo(X(x),Y(baseY));
+  for(let x=x1;x>=x0;x-=M.Lp/60) ctx.lineTo(X(x),Y(wallY(x)));
+  ctx.closePath();
+  const g=ctx.createLinearGradient(0,Y(side==='top'?M.R:-M.R),0,Y(side==='top'?M.R*0.2:-M.R*0.2));
+  g.addColorStop(0,getVar('--plaque-2')); g.addColorStop(1,getVar('--plaque'));
+  ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1; ctx.stroke();
+}
+
+function drawWalls(ctx,M,X,Y){
+  const Vc=Math.max(1e-6,M.wssMax);
+  for(const side of ['top','bot']){
+    const wallY = side==='top'?(x=>M.yT(x)):(x=>M.yB(x));
+    const wss = side==='top'?M.wT:M.wB;
+    const n=M.N;
+    for(let i=0;i<n-1;i++){ const x0=M.xs[i], x1=M.xs[i+1]; const w=wss[i];
+      let col;
+      if(w<-1e-9) col='rgba(217,110,214,0.95)';                 // disturbed / reversed
+      else { const c=rampRGB(VEL_STOPS,Math.min(1,Math.abs(w)/Vc)); col=`rgb(${c[0]},${c[1]},${c[2]})`; }
+      ctx.beginPath(); ctx.moveTo(X(x0),Y(wallY(x0))); ctx.lineTo(X(x1),Y(wallY(x1)));
+      ctx.strokeStyle = show.wss? col : 'rgba(180,200,230,.55)';
+      ctx.lineWidth = show.wss? 3 : 1.4; ctx.lineCap='round'; ctx.stroke();
+    }
+  }
+}
+
+function drawVectors(ctx,M,X,Y,sx,sy){
+  const step=34; const Vc=Math.max(1e-6,M.Vmax);
+  for(let px=MAP.pad.l+step*0.5; px<MAP.pad.l+MAP.vw; px+=step){
+    const x=(px-MAP.pad.l)/sx;
+    for(let py=MAP.pad.t+8; py<MAP.pad.t+MAP.vh; py+=step){
+      const y=(MAP.cy-py)/sy;
+      const u=M.speedAt(x,y); if(u===null) continue;
+      const half=M.Hf(x)/2, eta=(y-M.ycf(x))/half;
+      const v=(M.dfun(M.ycf,x)+eta*M.dfun(xx=>M.Hf(xx)/2,x))*u;
+      const mag=Math.abs(u); const t=clamp(mag/Vc,0,1);
+      const len=6+t*20; const ang=Math.atan2(-v*sy, (u>=0?1:-1)*Math.abs(u)*sx+1e-6);
+      const c=rampRGB(VEL_STOPS,t);
+      ctx.save(); ctx.translate(px,py); ctx.rotate(ang);
+      ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},.9)`; ctx.fillStyle=ctx.strokeStyle; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(-len/2,0); ctx.lineTo(len/2,0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(len/2,0); ctx.lineTo(len/2-4,-2.6); ctx.lineTo(len/2-4,2.6); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function drawParticles(ctx,M,X,Y){
+  const Vc=Math.max(1e-6,M.Vmax);
+  for(const p of particles){
+    const y=M.ycf(p.x)+p.eta*M.Hf(p.x)/2;
+    let u=M.speedAt(p.x,y); if(u===null) u=M.Umf(p.x);
+    const t=clamp(Math.abs(u)/Vc,0,1);
+    const px=X(p.x), py=Y(y);
+    const back=Math.max(2,4+t*7);
+    const ux=u>=0?1:-1;
+    // dark halo for contrast over the bright heat map
+    ctx.strokeStyle='rgba(6,12,24,.55)'; ctx.lineWidth=3.2; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(px-ux*back,py); ctx.lineTo(px,py); ctx.stroke();
+    let core;
+    if(u<0){ core='rgba(238,190,246,.95)'; }
+    else { const c=rampRGB(VEL_STOPS,Math.max(0.25,t)); core=`rgb(${c[0]},${c[1]},${c[2]})`; }
+    ctx.strokeStyle=core; ctx.lineWidth=1.7;
+    ctx.beginPath(); ctx.moveTo(px-ux*back,py); ctx.lineTo(px,py); ctx.stroke();
+    ctx.fillStyle='rgba(245,250,255,.95)'; ctx.beginPath(); ctx.arc(px,py,1.5,0,6.2832); ctx.fill();
+  }
+}
+
+function drawPressureBand(ctx,M,X){
+  const y0=FH-18, h=13;
+  // normalize pressure to symmetric range around 0
+  let pmax=1e-6; for(let i=0;i<M.N;i++) pmax=Math.max(pmax,Math.abs(M.pv[i]));
+  for(let i=0;i<M.N-1;i++){ const t=0.5+0.5*(M.pv[i]/pmax); const c=rampRGB(PRS_STOPS,1-t);
+    ctx.fillStyle=`rgb(${c[0]},${c[1]},${c[2]})`;
+    ctx.fillRect(X(M.xs[i]), y0, X(M.xs[i+1])-X(M.xs[i])+1, h); }
+  ctx.fillStyle='rgba(231,238,248,.7)'; ctx.font='10px JetBrains Mono, monospace'; ctx.textAlign='left';
+  ctx.fillText('static pressure (blue low → red high)', MAP.pad.l+2, y0-3);
+}
+
+function drawAnnotations(ctx,M,X,Y,Rwall){
+  ctx.font='11px Inter, sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='rgba(231,238,248,.85)';
+  ctx.fillText('Inlet ▸', MAP.pad.l+4, Y(0)-2);
+  // throat marker
+  ctx.strokeStyle='rgba(231,238,248,.35)'; ctx.setLineDash([3,3]); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(X(M.xc),Y(Rwall)-2); ctx.lineTo(X(M.xc),Y(-Rwall)+2); ctx.stroke(); ctx.setLineDash([]);
+  ctx.textAlign='center'; ctx.fillStyle='rgba(231,238,248,.8)';
+  ctx.fillText('throat', X(M.xc), Y(Rwall)-5);
+  if(M.recirc>0.15){ ctx.fillStyle='rgba(217,140,220,.95)'; ctx.textAlign='center';
+    const xr=Math.min(M.L*0.98,M.xc+M.Lrec*0.5);
+    ctx.fillText('recirculation', X(xr), Y(-Rwall)+13); }
+  ctx.textAlign='left';
+}
+
+/* ============================================================================
+   PLOTS
+   ========================================================================== */
+const pV=document.getElementById('pV'), pP=document.getElementById('pP'), pW=document.getElementById('pW');
+function drawPlot(cv,M,series,opts){
+  const cssH=150; const o=fit(cv,cssH); const ctx=o.ctx, W=o.w, H=o.h;
+  const pad={l:40,r:10,t:12,b:22}; const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#0a1120'; ctx.fillRect(0,0,W,H);
+  // y-range
+  let ymin=Infinity,ymax=-Infinity;
+  for(const s of series) for(const v of s.ys){ if(v<ymin)ymin=v; if(v>ymax)ymax=v; }
+  if(opts.zero){ ymin=Math.min(ymin,0); ymax=Math.max(ymax,0); }
+  if(ymin===ymax){ ymin-=1; ymax+=1; }
+  const padr=(ymax-ymin)*0.12||1; ymin-=padr; ymax+=padr;
+  const Lmm=M.L*1000;
+  const X=x=>pad.l+(x/Lmm)*pw; const Y=v=>pad.t+ph-((v-ymin)/(ymax-ymin))*ph;
+  // plaque band
+  ctx.fillStyle='rgba(201,162,75,.14)';
+  ctx.fillRect(X((M.xc-M.Lp/2)*1000),pad.t, X((M.xc+M.Lp/2)*1000)-X((M.xc-M.Lp/2)*1000), ph);
+  // grid + y ticks
+  ctx.strokeStyle='rgba(148,163,184,.14)'; ctx.fillStyle='rgba(159,176,201,.75)';
+  ctx.font='9px JetBrains Mono, monospace'; ctx.textAlign='right'; ctx.lineWidth=1;
+  for(let k=0;k<=3;k++){ const v=ymin+(ymax-ymin)*k/3; const yy=Y(v);
+    ctx.beginPath(); ctx.moveTo(pad.l,yy); ctx.lineTo(W-pad.r,yy); ctx.stroke();
+    ctx.fillText(fmt(v,Math.abs(v)<10?1:0), pad.l-4, yy+3); }
+  // zero line
+  if(opts.zero && 0>ymin && 0<ymax){ ctx.strokeStyle='rgba(159,176,201,.45)'; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pad.l,Y(0)); ctx.lineTo(W-pad.r,Y(0)); ctx.stroke(); ctx.setLineDash([]); }
+  // throat line
+  ctx.strokeStyle='rgba(231,238,248,.30)'; ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.moveTo(X(M.xc*1000),pad.t); ctx.lineTo(X(M.xc*1000),pad.t+ph); ctx.stroke(); ctx.setLineDash([]);
+  // series
+  for(const s of series){ ctx.strokeStyle=s.color; ctx.lineWidth=2; ctx.beginPath();
+    for(let i=0;i<M.N;i++){ const px=X(M.xs[i]*1000), py=Y(s.ys[i]); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+    ctx.stroke();
+    // endpoint dot
+    ctx.fillStyle=s.color; ctx.beginPath(); ctx.arc(X(M.xs[M.N-1]*1000),Y(s.ys[M.N-1]),2.6,0,6.28); ctx.fill(); }
+  // x label
+  ctx.fillStyle='rgba(108,127,156,.9)'; ctx.textAlign='center'; ctx.font='9px JetBrains Mono, monospace';
+  ctx.fillText('axial position (mm)', pad.l+pw/2, H-6);
+  ctx.textAlign='left'; ctx.fillText(opts.unit, pad.l, H-6);
+}
+function drawPlots(M){
+  drawPlot(pV,M,[{ys:M.Um,color:'#38bdf8'}],{unit:'m/s',zero:false});
+  drawPlot(pP,M,[{ys:M.pv.map(p=>p/133.322),color:'#f472b6'}],{unit:'mmHg',zero:true});
+  drawPlot(pW,M,[{ys:M.wT,color:'#fbbf24'},{ys:M.wB,color:'#34d399'}],{unit:'Pa',zero:true});
+}
+
+/* ============================================================================
+   READOUTS + explanation
+   ========================================================================== */
+function regime(re){ if(re<2300)return['lam','good']; if(re<4000)return['trans','warn']; return['turb','crit']; }
+function setTag(el,txt,cls){ el.textContent=txt; el.className='tag '+cls; }
+function updateReadouts(M){
+  const [rtxt,rcls]=regime(M.Re_in);
+  document.getElementById('k_re').textContent=fmt(M.Re_in,0);
+  setTag(document.getElementById('reTag'),rtxt,rcls);
+  document.getElementById('k_reth').textContent=fmt(M.Re_th,0);
+  document.getElementById('k_vmax').innerHTML=fmt(M.Vmax,2)+'<span class="u">m/s</span>';
+  document.getElementById('k_uin').innerHTML=fmt(state.uin,2)+'<span class="u">m/s</span>';
+  document.getElementById('k_uinst').textContent = state.mode==='pulsatile'? ('now '+fmt(M.Uinst,2)+' m/s') : (fmt(state.uin*100,0)+' cm/s');
+  document.getElementById('k_dp').innerHTML=fmt(M.dpTot/133.322,1)+'<span class="u">mmHg</span>';
+  document.getElementById('k_dppa').textContent=fmt(M.dpTot,0)+' Pa';
+  document.getElementById('k_wss').innerHTML=fmt(M.wssMax,2)+'<span class="u">Pa</span>';
+  document.getElementById('k_q').innerHTML=fmt(M.Q*1e6,2)+'<span class="u">mL/s</span>';
+  document.getElementById('k_qlm').textContent=fmt(M.Q*6e4,2)+' L/min';
+  const dmin=M.D*Math.sqrt(1-M.sev)*1000;
+  document.getElementById('k_dmin').innerHTML=fmt(dmin,2)+'<span class="u">mm</span>';
+  document.getElementById('k_area').textContent=fmt(M.sev*100,0)+'% area red.';
+  document.getElementById('k_wo').textContent=fmt(M.womersley,2);
+
+  // warning banner when assumptions strained
+  const b=document.getElementById('banner');
+  const msgs=[];
+  if(M.Re_th>2300) msgs.push(`Throat Re ≈ ${fmt(M.Re_th,0)} exceeds ~2300 — real flow would transition to turbulence; the laminar Poiseuille relations here are an extrapolation.`);
+  if(M.sev>=0.85) msgs.push(`Very severe (${fmt(M.sev*100,0)}% area) stenosis — the Bernoulli/expansion loss estimate grows steeply and becomes qualitative.`);
+  if(msgs.length){ b.classList.add('show'); b.innerHTML='<b>⚠ Model note:</b> '+msgs.join(' '); }
+  else b.classList.remove('show');
+
+  // live explanation line
+  const jetX=M.Uth/state.uin;
+  let sep = M.recirc>0.45?'strong':M.recirc>0.15?'mild':'no appreciable';
+  const eccTxt = state.ecc>0.55?'strongly eccentric':state.ecc>0.15?'mildly eccentric':'concentric';
+  document.getElementById('live').innerHTML =
+    `<b>Now:</b> ${eccTxt} plaque, ${fmt(M.sev*100,0)}% area reduction accelerates flow ~<b>${fmt(jetX,1)}×</b> at the throat `+
+    `(peak ${fmt(M.Vmax,2)} m/s), dropping ${fmt(M.dpTot/133.322,1)} mmHg with peak wall shear ${fmt(M.wssMax,2)} Pa. `+
+    `Inlet Re ${fmt(M.Re_in,0)} (${rtxt}); ${sep} downstream separation predicted.`;
+}
+
+/* ---------- CSS var access ---------- */
+const _cs=getComputedStyle(document.documentElement);
+function getVar(n){ return _cs.getPropertyValue(n).trim()||'#223'; }
+
+/* ============================================================================
+   ANIMATION LOOP
+   ========================================================================== */
+let tSec=0, last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(!reduceMotion) tSec+=dt;
+  let Uinst=state.uin;
+  if(state.mode==='pulsatile'){ const phi=((tSec*state.bpm/60)%1+1)%1; Uinst=state.uin*pulseShape(phi)/PULSE_MEAN;
+    document.getElementById('phaseHint').textContent = reduceMotion?'— pulsatile (motion reduced)':'— pulsatile · '+ (phi<0.35?'systole':'diastole');
+  } else document.getElementById('phaseHint').textContent='';
+  const M=buildModel(Uinst);
+  if(!reduceMotion && show.particles) stepParticles(dt,M);
+  renderMain(M); drawPlots(M); updateReadouts(M);
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================================
+   UI WIRING
+   ========================================================================== */
+function bindSlider(id,key,fmtFn){ const el=document.getElementById(id), out=document.getElementById('v_'+id.slice(2));
+  const upd=()=>{ let val=parseFloat(el.value); state[key]=val; out.textContent=fmtFn(val); };
+  el.addEventListener('input',upd); upd(); }
+bindSlider('s_sev','sevPct',v=>v+'%');
+bindSlider('s_ecc','ecc',v=>v+'%'); // stored 0..100 -> convert below
+bindSlider('s_uin','uin',v=>v.toFixed(2)+' m/s');
+bindSlider('s_mu','mu',v=>v.toFixed(4)+' Pa·s');
+bindSlider('s_dia','dia',v=>v.toFixed(1)+' mm');
+bindSlider('s_lp','lp',v=>v+' mm');
+bindSlider('s_rho','rho',v=>v+' kg/m³');
+bindSlider('s_bpm','bpm',v=>v+' BPM');
+// ecc stored as 0..1
+document.getElementById('s_ecc').addEventListener('input',e=>{ state.ecc=parseFloat(e.target.value)/100; });
+state.ecc=parseFloat(document.getElementById('s_ecc').value)/100;
+
+// toggles
+document.getElementById('toolbar').addEventListener('click',e=>{ const t=e.target.closest('.toggle'); if(!t)return;
+  const k=t.dataset.k; show[k]=!show[k]; t.classList.toggle('on',show[k]); });
+
+// mode segmented
+document.getElementById('modeSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  state.mode=b.dataset.mode; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  document.getElementById('s_bpm').disabled = state.mode!=='pulsatile'; });
+
+// reset
+document.getElementById('reset').addEventListener('click',()=>{
+  Object.assign(state,DEFAULTS); state.ecc=0;
+  const set=(id,v)=>{ const el=document.getElementById(id); el.value=v; el.dispatchEvent(new Event('input')); };
+  set('s_sev',DEFAULTS.sevPct); set('s_ecc',0); set('s_uin',DEFAULTS.uin); set('s_mu',DEFAULTS.mu);
+  set('s_dia',DEFAULTS.dia); set('s_lp',DEFAULTS.lp); set('s_rho',DEFAULTS.rho); set('s_bpm',DEFAULTS.bpm);
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode==='steady'));
+  document.getElementById('s_bpm').disabled=true; state.mode='steady';
+});
+
+// resize
+let rT; const onResize=()=>{ clearTimeout(rT); rT=setTimeout(sizeMain,80); };
+window.addEventListener('resize',onResize);
+if('ResizeObserver' in window){ new ResizeObserver(onResize).observe(flow.parentElement); }
+
+// boot
+sizeMain(); seedParticles(reduceMotion?70:150); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
