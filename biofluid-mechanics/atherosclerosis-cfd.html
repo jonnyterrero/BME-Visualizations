@@ -194,7 +194,7 @@
         </div>
         <span style="font-family:var(--mono)">m/s</span>
       </div>
-      <p class="disc">Bright throat = flow acceleration (continuity). Converging particles show streamline crowding;
+      <p class="disc" id="stageDisc">Bright throat = flow acceleration (continuity). Converging particles show streamline crowding;
         slow/reversed dim particles downstream mark predicted flow separation. Wall tint: warm = high shear near the
         throat, magenta = low/disturbed shear in the recirculation zone.</p>
     </section>
@@ -206,11 +206,21 @@
 
         <div class="grp">
           <div class="ctl">
+            <div class="lab"><span class="name">Geometry</span></div>
+            <div class="seg" id="geoSeg">
+              <button data-geo="straight" class="on">Straight artery</button>
+              <button data-geo="bifurcation">Bifurcation</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grp">
+          <div class="ctl">
             <div class="lab"><span class="name">Stenosis severity <small>(% area reduction)</small></span><span class="val" id="v_sev">50%</span></div>
             <input type="range" id="s_sev" min="0" max="90" step="1" value="50">
           </div>
           <div class="ctl">
-            <div class="lab"><span class="name">Plaque asymmetry <small>(concentric → eccentric)</small></span><span class="val" id="v_ecc">0%</span></div>
+            <div class="lab"><span class="name">Plaque asymmetry <small id="eccHint">(concentric → eccentric)</small></span><span class="val" id="v_ecc">0%</span></div>
             <input type="range" id="s_ecc" min="0" max="100" step="1" value="0">
           </div>
           <div class="ctl">
@@ -257,7 +267,7 @@
       <section class="card">
         <h2>Live readouts <span class="hint" id="phaseHint"></span></h2>
         <div class="kpis" id="kpis">
-          <div class="kpi"><div class="k">Reynolds <span id="reTag" class="tag good">lam</span></div><div class="v" id="k_re">–</div><div class="v2">throat Re <span id="k_reth">–</span></div></div>
+          <div class="kpi"><div class="k">Reynolds <span id="reTag" class="tag good">lam</span></div><div class="v" id="k_re">–</div><div class="v2"><span id="reThLbl">throat Re</span> <span id="k_reth">–</span></div></div>
           <div class="kpi"><div class="k">Peak velocity</div><div class="v" id="k_vmax">–<span class="u">m/s</span></div><div class="v2">centerline, throat</div></div>
           <div class="kpi"><div class="k">Mean inlet vel.</div><div class="v" id="k_uin">–<span class="u">m/s</span></div><div class="v2" id="k_uinst">—</div></div>
           <div class="kpi"><div class="k">Pressure drop Δp</div><div class="v" id="k_dp">–<span class="u">mmHg</span></div><div class="v2" id="k_dppa">— Pa</div></div>
@@ -274,21 +284,21 @@
   <div class="plots">
     <div class="card plot">
       <h3>Velocity vs. axial position</h3>
-      <p>Cross-sectional mean velocity U(x) = Q / A(x)</p>
+      <p id="pV_s">Cross-sectional mean velocity U(x) = Q / A(x)</p>
       <canvas id="pV"></canvas>
-      <div class="legend"><span><i style="background:#38bdf8"></i>mean U(x)</span><span><i style="background:rgba(201,162,75,.9)"></i>plaque</span></div>
+      <div class="legend" id="lgV"></div>
     </div>
     <div class="card plot">
       <h3>Pressure vs. axial position</h3>
-      <p>Static pressure relative to inlet</p>
+      <p id="pP_s">Static pressure relative to inlet</p>
       <canvas id="pP"></canvas>
-      <div class="legend"><span><i style="background:#f472b6"></i>p(x)</span><span><i style="background:rgba(201,162,75,.9)"></i>plaque</span></div>
+      <div class="legend" id="lgP"></div>
     </div>
     <div class="card plot">
       <h3>Wall shear stress vs. axial position</h3>
-      <p>τ<sub>w</sub> on each wall (sign = flow direction)</p>
+      <p id="pW_s">τ<sub>w</sub> on each wall (sign = flow direction)</p>
       <canvas id="pW"></canvas>
-      <div class="legend"><span><i style="background:#fbbf24"></i>top wall</span><span><i style="background:#34d399"></i>bottom wall</span></div>
+      <div class="legend" id="lgW"></div>
     </div>
   </div>
 
@@ -366,7 +376,7 @@ const velCSS=t=>{ const c=rampRGB(VEL_STOPS,t); return `rgb(${c[0]},${c[1]},${c[
 document.getElementById('cbarGrad').style.background='linear-gradient(90deg,'+VEL_STOPS.map(s=>velCSS(s[0])+' '+(s[0]*100).toFixed(0)+'%').join(',')+')';
 
 /* ---------- state ---------- */
-const DEFAULTS={ sevPct:50, ecc:0, uin:0.30, mu:0.0035, dia:5.0, lp:15, rho:1060, mode:'steady', bpm:70 };
+const DEFAULTS={ sevPct:50, ecc:0, uin:0.30, mu:0.0035, dia:5.0, lp:15, rho:1060, mode:'steady', bpm:70, geometry:'straight' };
 const state=Object.assign({},DEFAULTS);
 const show={ heatmap:true, particles:true, vectors:false, wss:true, pressure:false };
 
@@ -381,7 +391,8 @@ let PULSE_MEAN=(()=>{ let s=0,n=400; for(let i=0;i<n;i++) s+=pulseShape(i/n); re
 /* ============================================================================
    MODEL  — build all geometry + fields for a given instantaneous inlet velocity
    ========================================================================== */
-function buildModel(Uinst){
+function buildModel(Uinst){ return state.geometry==='bifurcation'?buildBifurcation(Uinst):buildStraight(Uinst); }
+function buildStraight(Uinst){
   const s=state;
   const D=s.dia/1000, R=D/2, Lp=s.lp/1000, mu=s.mu, rho=s.rho;
   const L=Math.max(0.07,14*D);           // vessel length shown
@@ -467,7 +478,7 @@ function buildModel(Uinst){
 
   return { D,R,Lp,L,xc,sev,A0,mu,rho, shape,Hf,yT,yB,ycf,Umf,Ucf,bjet,yjet,speedAt,dfun,
            Hth,Uth,Ljet,Re_in,Re_th,recirc,Lrec,Uinst, xs,Um,Hh,pv,wT,wB, dx,N,
-           Vmax:2*Uth, dpTot, dpMin:pmin, wssMax, Q, womersley, xExpEnd };
+           Vmax:2*Uth, dpTot, dpMin:pmin, wssMax, Q, womersley, xExpEnd, geo:'straight', dminMM:D*Math.sqrt(1-sev)*1000 };
 }
 
 /* ============================================================================
@@ -494,8 +505,9 @@ function makeMap(M){ const pad={l:10,r:10,t:12,b:show.pressure?30:12};
    ========================================================================== */
 let particles=[];
 function seedParticles(n){ particles=[]; for(let i=0;i<n;i++) particles.push(newP(Math.random())); }
-function newP(frac){ return { x:0.0001, eta:(Math.random()*1.84-0.92), age:0, seed:frac }; }
+function newP(frac){ return { x:0.0001, eta:(Math.random()*1.84-0.92), age:0, seed:frac, br:null, etaB:0 }; }
 function stepParticles(dt,M){
+  if(M.geo==='bifurcation'){ stepParticlesBif(dt,M); return; }
   const step=dt*0.13; // maps m/s -> gentle on-screen pace (qualitative)
   for(const p of particles){
     // recirc lane on plaque side?
@@ -517,6 +529,7 @@ function stepParticles(dt,M){
    RENDER main scene
    ========================================================================== */
 function renderMain(M){
+  if(M.geo==='bifurcation'){ renderBifurcation(M); return; }
   const ctx=fctx; MAP=makeMap(M); const {X,Y,sx,sy}=MAP;
   ctx.clearRect(0,0,FW,FH);
   ctx.fillStyle='#0a1120'; ctx.fillRect(0,0,FW,FH);
@@ -720,6 +733,11 @@ function drawPlot(cv,M,series,opts){
   // throat line
   ctx.strokeStyle='rgba(231,238,248,.30)'; ctx.setLineDash([2,3]);
   ctx.beginPath(); ctx.moveTo(X(M.xc*1000),pad.t); ctx.lineTo(X(M.xc*1000),pad.t+ph); ctx.stroke(); ctx.setLineDash([]);
+  // apex marker (bifurcation)
+  if(opts.apexX!=null){ ctx.strokeStyle='rgba(120,190,255,.55)'; ctx.setLineDash([2,3]);
+    ctx.beginPath(); ctx.moveTo(X(opts.apexX*1000),pad.t); ctx.lineTo(X(opts.apexX*1000),pad.t+ph); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(120,190,255,.85)'; ctx.font='8px JetBrains Mono, monospace'; ctx.textAlign='center';
+    ctx.fillText('apex', X(opts.apexX*1000), pad.t+8); ctx.textAlign='left'; }
   // series
   for(const s of series){ ctx.strokeStyle=s.color; ctx.lineWidth=2; ctx.beginPath();
     for(let i=0;i<M.N;i++){ const px=X(M.xs[i]*1000), py=Y(s.ys[i]); i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
@@ -732,6 +750,7 @@ function drawPlot(cv,M,series,opts){
   ctx.textAlign='left'; ctx.fillText(opts.unit, pad.l, H-6);
 }
 function drawPlots(M){
+  if(M.geo==='bifurcation'){ drawPlotsBif(M); return; }
   drawPlot(pV,M,[{ys:M.Um,color:'#38bdf8'}],{unit:'m/s',zero:false});
   drawPlot(pP,M,[{ys:M.pv.map(p=>p/133.322),color:'#f472b6'}],{unit:'mmHg',zero:true});
   drawPlot(pW,M,[{ys:M.wT,color:'#fbbf24'},{ys:M.wB,color:'#34d399'}],{unit:'Pa',zero:true});
@@ -754,8 +773,10 @@ function updateReadouts(M){
   document.getElementById('k_dppa').textContent=fmt(M.dpTot,0)+' Pa';
   document.getElementById('k_wss').innerHTML=fmt(M.wssMax,2)+'<span class="u">Pa</span>';
   document.getElementById('k_q').innerHTML=fmt(M.Q*1e6,2)+'<span class="u">mL/s</span>';
-  document.getElementById('k_qlm').textContent=fmt(M.Q*6e4,2)+' L/min';
-  const dmin=M.D*Math.sqrt(1-M.sev)*1000;
+  const bif = M.geo==='bifurcation';
+  document.getElementById('reThLbl').textContent = bif?'daughter Re':'throat Re';
+  document.getElementById('k_qlm').textContent = bif? ('split '+fmt(M.fU*100,0)+' / '+fmt((1-M.fU)*100,0)+'%') : (fmt(M.Q*6e4,2)+' L/min');
+  const dmin = (M.dminMM!=null)? M.dminMM : M.D*Math.sqrt(1-M.sev)*1000;
   document.getElementById('k_dmin').innerHTML=fmt(dmin,2)+'<span class="u">mm</span>';
   document.getElementById('k_area').textContent=fmt(M.sev*100,0)+'% area red.';
   document.getElementById('k_wo').textContent=fmt(M.womersley,2);
@@ -769,18 +790,244 @@ function updateReadouts(M){
   else b.classList.remove('show');
 
   // live explanation line
-  const jetX=M.Uth/state.uin;
-  let sep = M.recirc>0.45?'strong':M.recirc>0.15?'mild':'no appreciable';
-  const eccTxt = state.ecc>0.55?'strongly eccentric':state.ecc>0.15?'mildly eccentric':'concentric';
-  document.getElementById('live').innerHTML =
-    `<b>Now:</b> ${eccTxt} plaque, ${fmt(M.sev*100,0)}% area reduction accelerates flow ~<b>${fmt(jetX,1)}×</b> at the throat `+
-    `(peak ${fmt(M.Vmax,2)} m/s), dropping ${fmt(M.dpTot/133.322,1)} mmHg with peak wall shear ${fmt(M.wssMax,2)} Pa. `+
-    `Inlet Re ${fmt(M.Re_in,0)} (${rtxt}); ${sep} downstream separation predicted.`;
+  const liveEl=document.getElementById('live');
+  if(M.geo==='bifurcation'){
+    liveEl.innerHTML =
+      `<b>Now (bifurcation):</b> flow splits <b>${fmt(M.fU*100,0)}% / ${fmt((1-M.fU)*100,0)}%</b> between the daughter branches by resistance; `+
+      `the more-diseased branch (${fmt(M.sev*100,0)}% area) peaks at ${fmt(M.Vmax,2)} m/s and drops ${fmt(M.dpTot/133.322,1)} mmHg. `+
+      `Low / reversed shear on the outer sinus wall (magenta) is the atherogenic zone; the flow divider sees high shear. Parent Re ${fmt(M.Re_in,0)} (${rtxt}).`;
+  } else {
+    const jetX=M.Uth/state.uin;
+    const sep = M.recirc>0.45?'strong':M.recirc>0.15?'mild':'no appreciable';
+    const eccTxt = state.ecc>0.55?'strongly eccentric':state.ecc>0.15?'mildly eccentric':'concentric';
+    liveEl.innerHTML =
+      `<b>Now:</b> ${eccTxt} plaque, ${fmt(M.sev*100,0)}% area reduction accelerates flow ~<b>${fmt(jetX,1)}×</b> at the throat `+
+      `(peak ${fmt(M.Vmax,2)} m/s), dropping ${fmt(M.dpTot/133.322,1)} mmHg with peak wall shear ${fmt(M.wssMax,2)} Pa. `+
+      `Inlet Re ${fmt(M.Re_in,0)} (${rtxt}); ${sep} downstream separation predicted.`;
+  }
 }
 
 /* ---------- CSS var access ---------- */
 const _cs=getComputedStyle(document.documentElement);
 function getVar(n){ return _cs.getPropertyValue(n).trim()||'#223'; }
+
+/* ============================================================================
+   BIFURCATION geometry model + render (carotid-style Y with sinus/flow divider)
+   ========================================================================== */
+function buildBifurcation(Uinst){
+  const s=state, D=s.dia/1000, Rp=D/2, mu=s.mu, rho=s.rho, U0=Uinst;
+  const parentLen=3.0*D, Lbr=4.4*D, L=parentLen+Lbr, xa=parentLen;   // apex = flow divider
+  const theta=18*Math.PI/180, tanT=Math.tan(theta);
+  const murray=Math.pow(2,-1/3), Rd=Rp*murray;                       // Murray's law daughter radius
+  const flare=0.9*D, Lp=s.lp/1000;
+  const sev=clamp(s.sevPct/100,0,0.9);
+  const sev_u=sev, sev_l=sev*(1-s.ecc);                              // asymmetry -> unilateral disease
+  const Lsin=2.3*Rd, bulgeMax=0.42*Rd;                               // carotid sinus / bulb
+  const A0=Math.PI/4*D*D, Qt=A0*U0;
+
+  const shp=(x,c,len)=>{ const u=Math.abs(x-c); if(u>=len/2)return 0; return 0.5*(1+Math.cos(2*Math.PI*(x-c)/len)); };
+  const sinusZone=x=> x<=xa?0: shp(x, xa+Lsin*0.5, Lsin);
+  const bulge=x=> bulgeMax*sinusZone(x);
+  const xth=xa+Lsin*0.92;                                            // throat just past bulb
+  const plHalf=Math.min(Lp/2,(L-xth)*0.85);
+  const intrDia=(x,sv)=> sv<=0?0: 2*Rd*(1-Math.sqrt(1-sv))*shp(x, xth, Math.max(1e-4,plHalf*2));
+
+  const pHalf=x=> x<=xa-flare? Rp : mix(Rp, 2*Rd, smoothstep(xa-flare,xa,x));   // parent flares into sinus
+  const Up=x=> Qt/(Math.PI/4*Math.pow(2*pHalf(x),2));
+  const innerU=x=>(x-xa)*tanT;                                       // divider wedge (clean inner wall)
+  const fullU =x=> 2*Rd+bulge(x);
+  const dU    =(x,sv)=> Math.max(0.14*2*Rd, fullU(x)-intrDia(x,sv)); // lumen diameter
+  const outerU=x=> innerU(x)+fullU(x);
+  const lumOut=(x,sv)=> innerU(x)+dU(x,sv);
+
+  // flow split by geometry-based viscous conductance  [EST]
+  function res(sv){ const M=80, dx=(L-xa)/(M-1); let R=0;
+    for(let i=1;i<M;i++){ const x0=xa+(i-1)*dx, x1=xa+i*dx, r0=dU(x0,sv)/2, r1=dU(x1,sv)/2;
+      R+=0.5*(8*mu/(Math.PI*Math.pow(r0,4))+8*mu/(Math.PI*Math.pow(r1,4)))*dx; } return R; }
+  const Ru=res(sev_u), Rl=res(sev_l), Gu=1/Ru, Gl=1/Rl, fU=Gu/(Gu+Gl);
+  const Qu=Qt*fU, Ql=Qt*(1-fU), dpBranch=Qt/(Gu+Gl);
+  const Uu=x=> Qu/(Math.PI/4*Math.pow(dU(x,sev_u),2));
+  const Ul=x=> Ql/(Math.PI/4*Math.pow(dU(x,sev_l),2));
+
+  const Uapex=Up(xa);
+  let pvPar=0; { const M=40, dx=xa/(M-1);
+    for(let i=1;i<M;i++){ const x0=(i-1)*dx,x1=i*dx;
+      pvPar+=0.5*(8*mu*Qt/(Math.PI*Math.pow(pHalf(x0),4))+8*mu*Qt/(Math.PI*Math.pow(pHalf(x1),4)))*dx; } }
+  const pApex=-pvPar, pOut=pApex-dpBranch;
+
+  const Re_in=rho*U0*D/mu;
+  const dthU=dU(xth,sev_u), dthL=dU(xth,sev_l);
+  const ReU=rho*Uu(xth)*dthU/mu, ReL=rho*Ul(xth)*dthL/mu, ReD=Math.max(ReU,ReL);
+  const sep_u=0.1+0.85*smoothstep(150,900,ReU), sep_l=0.1+0.85*smoothstep(150,900,ReL);
+
+  function speedAt(x,y){
+    if(x<=xa){ const h=pHalf(x); if(Math.abs(y)>h) return null; const eta=y/h; return Math.max(0,2*Up(x)*(1-eta*eta)); }
+    const iu=innerU(x);
+    if(y>=iu && y<=lumOut(x,sev_u)){ const w=lumOut(x,sev_u)-iu, pos=(y-iu)/w, eta=2*pos-1;
+      let u=Math.max(0,2*Uu(x)*(1-eta*eta)); const sz=sinusZone(x), op=clamp((pos-0.55)/0.45,0,1);
+      if(sz>0) u=u*(1-0.85*sep_u*sz*op)-0.28*U0*sep_u*sz*op; return u; }
+    if(y<=-iu && y>=-lumOut(x,sev_l)){ const yy=-y, w=lumOut(x,sev_l)-iu, pos=(yy-iu)/w, eta=2*pos-1;
+      let u=Math.max(0,2*Ul(x)*(1-eta*eta)); const sz=sinusZone(x), op=clamp((pos-0.55)/0.45,0,1);
+      if(sz>0) u=u*(1-0.85*sep_l*sz*op)-0.28*U0*sep_l*sz*op; return u; }
+    return null;
+  }
+
+  const N=200, dx=L/(N-1);
+  const xs=new Array(N), Uup=new Array(N), Ulo=new Array(N), pUp=new Array(N), pLo=new Array(N), wUp=new Array(N), wLo=new Array(N);
+  let cumU=0,cumL=0,prevx=xa,wssMax=0,pmin=0;
+  function parentP(x){ const M=16; let cum=0, dxx=x/M;
+    for(let i=1;i<=M;i++){ const a=(i-1)*dxx,b=i*dxx;
+      cum+=0.5*(8*mu*Qt/(Math.PI*Math.pow(pHalf(a),4))+8*mu*Qt/(Math.PI*Math.pow(pHalf(b),4)))*dxx; }
+    return -cum+0.5*rho*(U0*U0-Up(x)*Up(x)); }
+  for(let i=0;i<N;i++){ const x=i*dx; xs[i]=x;
+    if(x<=xa){ Uup[i]=Up(x); Ulo[i]=Up(x); const pp=parentP(x); pUp[i]=pp; pLo[i]=pp;
+      const wp=4*mu*Up(x)/pHalf(x); wUp[i]=wp; wLo[i]=wp; prevx=x; }
+    else { const xp=Math.max(prevx,xa);
+      const ru0=dU(xp,sev_u)/2,ru1=dU(x,sev_u)/2; cumU+=0.5*(8*mu*Qu/(Math.PI*Math.pow(ru0,4))+8*mu*Qu/(Math.PI*Math.pow(ru1,4)))*(x-xp);
+      const rl0=dU(xp,sev_l)/2,rl1=dU(x,sev_l)/2; cumL+=0.5*(8*mu*Ql/(Math.PI*Math.pow(rl0,4))+8*mu*Ql/(Math.PI*Math.pow(rl1,4)))*(x-xp);
+      prevx=x; Uup[i]=Uu(x); Ulo[i]=Ul(x);
+      pUp[i]=pApex-cumU+0.5*rho*(Uapex*Uapex-Uu(x)*Uu(x));
+      pLo[i]=pApex-cumL+0.5*rho*(Uapex*Uapex-Ul(x)*Ul(x));
+      const sz=sinusZone(x);
+      wUp[i]=(8*mu*Uu(x)/dU(x,sev_u))*(1-1.6*sep_u*sz);
+      wLo[i]=(8*mu*Ul(x)/dU(x,sev_l))*(1-1.6*sep_l*sz);
+    }
+    pmin=Math.min(pmin,pUp[i],pLo[i]); wssMax=Math.max(wssMax,Math.abs(wUp[i]),Math.abs(wLo[i]));
+  }
+  const Vmax=Math.max(2*U0,2*Uu(xth),2*Ul(xth)), ymax=outerU(L)*1.06;
+  const omega=2*Math.PI*s.bpm/60, womersley=Rp*Math.sqrt(omega*rho/mu);
+
+  return { geo:'bifurcation', L,D,R:Rp,Rp,Rd,xa,theta,tanT,Lp,Lsin,xth,
+    sev, sev_u,sev_l, fU,Qt, Uinst:U0, N,xs, Um:Uup, Uup,Ulo,pUp,pLo,wUp,wLo, pv:pUp,
+    speedAt, pHalf,Up,Uu,Ul,innerU,fullU,dU,lumOut,outerU,sinusZone, sep_u,sep_l,
+    Re_in, Re_th:ReD, Vmax, dpTot:-pOut, dpMin:pmin, wssMax, Q:Qt, womersley,
+    ymax, xc:xth, dminMM:Math.min(dthU,dthL)*1000, recirc:Math.max(sep_u,sep_l) };
+}
+
+function renderBifurcation(M){
+  const ctx=fctx; ctx.clearRect(0,0,FW,FH); ctx.fillStyle='#0a1120'; ctx.fillRect(0,0,FW,FH);
+  const pad={l:10,r:10,t:14,b:show.pressure?32:14};
+  const vw=FW-pad.l-pad.r, vh=FH-pad.t-pad.b;
+  const sx=vw/M.L, sy=(vh*0.9)/(2*M.ymax), cy=pad.t+vh/2;
+  const X=x=>pad.l+x*sx, Y=y=>cy-y*sy;
+  MAP={pad,vw,vh,sx,sy,cy,X,Y};
+  const STEP=M.L/240, topEdge=x=> x<=M.xa? M.pHalf(x) : M.outerU(x);
+
+  // vessel tissue silhouette (solid band that forks; wedge included as tissue)
+  ctx.beginPath(); ctx.moveTo(X(0),Y(topEdge(0)));
+  for(let x=0;x<=M.L+1e-9;x+=STEP) ctx.lineTo(X(x),Y(topEdge(x)));
+  for(let x=M.L;x>=0;x-=STEP) ctx.lineTo(X(x),Y(-topEdge(x)));
+  ctx.closePath(); ctx.fillStyle=getVar('--tissue'); ctx.fill();
+  ctx.strokeStyle='rgba(150,170,200,.28)'; ctx.lineWidth=1; ctx.stroke();
+
+  function lumenPath(){ ctx.beginPath(); ctx.moveTo(X(0),Y(M.pHalf(0)));
+    for(let x=0;x<=M.xa;x+=STEP) ctx.lineTo(X(x),Y(M.pHalf(x)));
+    for(let x=M.xa;x<=M.L+1e-9;x+=STEP) ctx.lineTo(X(x),Y(M.lumOut(x,M.sev_u)));
+    ctx.lineTo(X(M.L),Y(M.innerU(M.L)));
+    for(let x=M.L;x>=M.xa;x-=STEP) ctx.lineTo(X(x),Y(M.innerU(x)));
+    for(let x=M.xa;x<=M.L+1e-9;x+=STEP) ctx.lineTo(X(x),Y(-M.innerU(x)));
+    ctx.lineTo(X(M.L),Y(-M.lumOut(M.L,M.sev_l)));
+    for(let x=M.L;x>=M.xa;x-=STEP) ctx.lineTo(X(x),Y(-M.lumOut(x,M.sev_l)));
+    for(let x=M.xa;x>=0;x-=STEP) ctx.lineTo(X(x),Y(-M.pHalf(x)));
+    ctx.closePath(); }
+
+  if(show.heatmap){ const d=hmImg.data, Vc=Math.max(1e-6,M.Vmax);
+    for(let j=0;j<HM_NY;j++){ const yph=M.ymax-(j+0.5)/HM_NY*(2*M.ymax);
+      for(let i=0;i<HM_NX;i++){ const xph=(i+0.5)/HM_NX*M.L, idx=(j*HM_NX+i)*4;
+        const u=M.speedAt(xph,yph); if(u===null){ d[idx+3]=0; continue; }
+        const c=rampRGB(VEL_STOPS,Math.abs(u)/Vc); d[idx]=c[0];d[idx+1]=c[1];d[idx+2]=c[2];d[idx+3]=255; } }
+    hmCtx.putImageData(hmImg,0,0);
+    ctx.save(); lumenPath(); ctx.clip(); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+    ctx.drawImage(hmCanvas, X(0), Y(M.ymax), M.L*sx, (2*M.ymax)*sy); ctx.restore();
+  } else { ctx.save(); lumenPath(); ctx.clip(); ctx.fillStyle='#0c1730'; ctx.fillRect(0,0,FW,FH); ctx.restore(); }
+
+  // plaque bodies in the diseased sinus (outer-wall atheroma)
+  function plaque(side,sv){ if(sv<=0.02) return; ctx.beginPath();
+    for(let x=M.xa;x<=M.L+1e-9;x+=STEP) ctx.lineTo(X(x),Y(side*M.outerU(x)));
+    for(let x=M.L;x>=M.xa;x-=STEP) ctx.lineTo(X(x),Y(side*M.lumOut(x,sv)));
+    ctx.closePath();
+    const g=ctx.createLinearGradient(0,Y(side*M.ymax),0,Y(0));
+    g.addColorStop(0,getVar('--plaque')); g.addColorStop(1,getVar('--plaque-2'));
+    ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle='rgba(0,0,0,.22)'; ctx.lineWidth=1; ctx.stroke(); }
+  plaque(1,M.sev_u); plaque(-1,M.sev_l);
+
+  if(show.vectors) drawVectorsBif(ctx,M,X,Y,sx,sy);
+  if(show.particles) drawParticlesBif(ctx,M,X,Y);
+  drawWallsBif(ctx,M,X,Y);
+  if(show.pressure) drawPressureBand(ctx,M,X);
+
+  ctx.font='11px Inter, sans-serif'; ctx.fillStyle='rgba(231,238,248,.85)'; ctx.textAlign='left';
+  ctx.fillText('Inlet ▸', pad.l+4, Y(0)-2);
+  ctx.fillStyle='rgba(231,238,248,.8)'; ctx.textAlign='center';
+  ctx.fillText('apex', X(M.xa)+10, cy+3);
+  if(M.sev>=0.03){ ctx.fillStyle='rgba(217,140,220,.95)'; ctx.fillText('sinus', X(M.xa+M.Lsin*0.5), Y(M.outerU(M.xa+M.Lsin*0.5))-4); }
+  ctx.textAlign='left';
+
+  document.getElementById('cbMax').textContent=fmt(M.Vmax,2);
+  document.getElementById('cbMid').textContent=fmt(M.Vmax/2,2);
+}
+
+function drawWallsBif(ctx,M,X,Y){
+  const Vc=Math.max(1e-6,M.wssMax);
+  const colOf=w=>{ if(w<-1e-9) return 'rgba(217,110,214,0.95)'; const c=rampRGB(VEL_STOPS,Math.min(1,Math.abs(w)/Vc)); return `rgb(${c[0]},${c[1]},${c[2]})`; };
+  function edge(yf,wss){ for(let i=0;i<M.N-1;i++){ const x0=M.xs[i],x1=M.xs[i+1];
+    ctx.beginPath(); ctx.moveTo(X(x0),Y(yf(x0))); ctx.lineTo(X(x1),Y(yf(x1)));
+    ctx.strokeStyle= show.wss? colOf(wss[i]) : 'rgba(180,200,230,.55)'; ctx.lineWidth= show.wss?3:1.4; ctx.lineCap='round'; ctx.stroke(); } }
+  edge(x=> x<=M.xa? M.pHalf(x) : M.lumOut(x,M.sev_u), M.wUp);
+  edge(x=> x<=M.xa? -M.pHalf(x): -M.lumOut(x,M.sev_l), M.wLo);
+  ctx.strokeStyle='rgba(170,185,210,.5)'; ctx.lineWidth=1.4;
+  ctx.beginPath(); for(let x=M.xa;x<=M.L;x+=M.L/160){ const px=X(x),py=Y(M.innerU(x)); x===M.xa?ctx.moveTo(px,py):ctx.lineTo(px,py);} ctx.stroke();
+  ctx.beginPath(); for(let x=M.xa;x<=M.L;x+=M.L/160){ const px=X(x),py=Y(-M.innerU(x)); x===M.xa?ctx.moveTo(px,py):ctx.lineTo(px,py);} ctx.stroke();
+}
+
+function bifY(M,p){ // physical y of a particle from its lane
+  if(p.x<=M.xa) return p.eta*M.pHalf(p.x);
+  const sv=p.br==='l'?M.sev_l:M.sev_u, iu=M.innerU(p.x), lo=M.lumOut(p.x,sv), w=lo-iu;
+  const pos=clamp(p.etaB*0.5+0.5,0,1); return (p.br==='l'?-1:1)*(iu+pos*w);
+}
+function drawParticlesBif(ctx,M,X,Y){
+  const Vc=Math.max(1e-6,M.Vmax);
+  for(const p of particles){ const y=bifY(M,p);
+    let u=M.speedAt(p.x,y); if(u===null) u=p.x<=M.xa?M.Up(p.x):(p.br==='l'?M.Ul(p.x):M.Uu(p.x));
+    const t=clamp(Math.abs(u)/Vc,0,1), px=X(p.x),py=Y(y), back=Math.max(2,4+t*7), ux=u>=0?1:-1;
+    ctx.strokeStyle='rgba(6,12,24,.55)'; ctx.lineWidth=3.2; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(px-ux*back,py); ctx.lineTo(px,py); ctx.stroke();
+    let core; if(u<0) core='rgba(238,190,246,.95)'; else { const c=rampRGB(VEL_STOPS,Math.max(0.25,t)); core=`rgb(${c[0]},${c[1]},${c[2]})`; }
+    ctx.strokeStyle=core; ctx.lineWidth=1.7; ctx.beginPath(); ctx.moveTo(px-ux*back,py); ctx.lineTo(px,py); ctx.stroke();
+    ctx.fillStyle='rgba(245,250,255,.95)'; ctx.beginPath(); ctx.arc(px,py,1.5,0,6.2832); ctx.fill();
+  }
+}
+function stepParticlesBif(dt,M){
+  const step=dt*0.13;
+  for(const p of particles){
+    if(p.x<=M.xa){ const y=p.eta*M.pHalf(p.x); let u=M.speedAt(p.x,y); if(u===null||u<=0)u=M.Up(p.x); p.x+=u*step;
+      if(p.x>M.xa && p.br===null){ p.br=Math.random()<M.fU?'u':'l'; p.etaB=(Math.random()*1.7-0.85); } }
+    else { if(p.br===null){ p.br=Math.random()<M.fU?'u':'l'; p.etaB=(Math.random()*1.7-0.85); }
+      const y=bifY(M,p); let u=M.speedAt(p.x,y); if(u===null)u=(p.br==='l'?M.Ul(p.x):M.Uu(p.x)); p.x+=u*step;
+      const sepS=p.br==='l'?M.sep_l:M.sep_u, sz=M.sinusZone(p.x), pos=clamp(p.etaB*0.5+0.5,0,1);
+      if(sepS>0.3 && sz>0.15 && pos>0.62){ p.etaB+=Math.sin(p.age*3+p.seed*6.28)*0.02; p.etaB=clamp(p.etaB,0.25,0.92); } }
+    p.age+=dt;
+    if(p.x>M.L||p.x<0||p.age>30){ Object.assign(p,newP(Math.random()),{x:0.0001,br:null,etaB:0}); }
+  }
+}
+function drawVectorsBif(ctx,M,X,Y,sx,sy){
+  const step=34, Vc=Math.max(1e-6,M.Vmax);
+  for(let px=MAP.pad.l+step*0.5; px<MAP.pad.l+MAP.vw; px+=step){ const x=(px-MAP.pad.l)/sx;
+    for(let py=MAP.pad.t+8; py<MAP.pad.t+MAP.vh; py+=step){ const y=(MAP.cy-py)/sy;
+      const u=M.speedAt(x,y); if(u===null) continue; const t=clamp(Math.abs(u)/Vc,0,1);
+      let ang= x>M.xa ? (y>=0? -M.theta : M.theta) : 0; if(u<0) ang+=Math.PI;
+      const len=6+t*20, c=rampRGB(VEL_STOPS,t);
+      ctx.save(); ctx.translate(px,py); ctx.rotate(ang);
+      ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},.9)`; ctx.fillStyle=ctx.strokeStyle; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(-len/2,0); ctx.lineTo(len/2,0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(len/2,0); ctx.lineTo(len/2-4,-2.6); ctx.lineTo(len/2-4,2.6); ctx.closePath(); ctx.fill();
+      ctx.restore(); } }
+}
+function drawPlotsBif(M){
+  drawPlot(pV,M,[{ys:M.Uup,color:'#38bdf8'},{ys:M.Ulo,color:'#34d399'}],{unit:'m/s',zero:false,apexX:M.xa});
+  drawPlot(pP,M,[{ys:M.pUp.map(p=>p/133.322),color:'#f472b6'},{ys:M.pLo.map(p=>p/133.322),color:'#a78bfa'}],{unit:'mmHg',zero:true,apexX:M.xa});
+  drawPlot(pW,M,[{ys:M.wUp,color:'#fbbf24'},{ys:M.wLo,color:'#34d399'}],{unit:'Pa',zero:true,apexX:M.xa});
+}
 
 /* ============================================================================
    ANIMATION LOOP
@@ -826,6 +1073,25 @@ document.getElementById('modeSeg').addEventListener('click',e=>{ const b=e.targe
   state.mode=b.dataset.mode; [...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
   document.getElementById('s_bpm').disabled = state.mode!=='pulsatile'; });
 
+// geometry segmented + per-mode labels
+function applyModeUI(){
+  const bif = state.geometry==='bifurcation';
+  document.querySelectorAll('#geoSeg button').forEach(x=>x.classList.toggle('on', x.dataset.geo===state.geometry));
+  document.getElementById('eccHint').textContent = bif? '(bilateral → unilateral)' : '(concentric → eccentric)';
+  document.getElementById('pV_s').textContent = bif? 'Mean velocity in each daughter branch' : 'Cross-sectional mean velocity U(x) = Q / A(x)';
+  document.getElementById('pP_s').textContent = bif? 'Static pressure in each branch (rel. to inlet)' : 'Static pressure relative to inlet';
+  document.getElementById('pW_s').innerHTML  = bif? 'Outer-wall τ<sub>w</sub> in each daughter (low in sinus)' : 'τ<sub>w</sub> on each wall (sign = flow direction)';
+  const li=(c,l)=>`<span><i style="background:${c}"></i>${l}</span>`;
+  document.getElementById('lgV').innerHTML = bif? li('#38bdf8','upper daughter')+li('#34d399','lower daughter') : li('#38bdf8','mean U(x)')+li('rgba(201,162,75,.9)','plaque');
+  document.getElementById('lgP').innerHTML = bif? li('#f472b6','upper branch')+li('#a78bfa','lower branch') : li('#f472b6','p(x)')+li('rgba(201,162,75,.9)','plaque');
+  document.getElementById('lgW').innerHTML = bif? li('#fbbf24','upper outer wall')+li('#34d399','lower outer wall') : li('#fbbf24','top wall')+li('#34d399','bottom wall');
+  document.getElementById('stageDisc').textContent = bif
+    ? 'Bright throat = accelerated jet in the stenosed daughter. Flow divides at the apex (flow divider). Magenta walls = low / reversed shear on the carotid-sinus outer wall — the preferential site of plaque. Dim reversed particles show sinus recirculation.'
+    : 'Bright throat = flow acceleration (continuity). Converging particles show streamline crowding; slow/reversed dim particles downstream mark predicted flow separation. Wall tint: warm = high shear near the throat, magenta = low/disturbed shear in the recirculation zone.';
+}
+document.getElementById('geoSeg').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  state.geometry=b.dataset.geo; applyModeUI(); seedParticles(reduceMotion?70:150); });
+
 // reset
 document.getElementById('reset').addEventListener('click',()=>{
   Object.assign(state,DEFAULTS); state.ecc=0;
@@ -834,6 +1100,7 @@ document.getElementById('reset').addEventListener('click',()=>{
   set('s_dia',DEFAULTS.dia); set('s_lp',DEFAULTS.lp); set('s_rho',DEFAULTS.rho); set('s_bpm',DEFAULTS.bpm);
   document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.mode==='steady'));
   document.getElementById('s_bpm').disabled=true; state.mode='steady';
+  state.geometry='straight'; applyModeUI(); seedParticles(reduceMotion?70:150);
 });
 
 // resize
@@ -842,7 +1109,7 @@ window.addEventListener('resize',onResize);
 if('ResizeObserver' in window){ new ResizeObserver(onResize).observe(flow.parentElement); }
 
 // boot
-sizeMain(); seedParticles(reduceMotion?70:150); requestAnimationFrame(frame);
+applyModeUI(); sizeMain(); seedParticles(reduceMotion?70:150); requestAnimationFrame(frame);
 </script>
 </body>
 </html>

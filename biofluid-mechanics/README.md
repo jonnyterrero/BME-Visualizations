@@ -15,7 +15,7 @@ Or open [`dashboard.html`](dashboard.html) locally in a browser.
 | File | What it is |
 | --- | --- |
 | [`dashboard.html`](dashboard.html) | Three-tab computational dashboard with live Chart.js plots and sliders |
-| [`atherosclerosis-cfd.html`](atherosclerosis-cfd.html) | Interactive reduced-order CFD of blood flow through a stenotic artery: velocity heat map, streamlines, pressure, and wall shear stress |
+| [`atherosclerosis-cfd.html`](atherosclerosis-cfd.html) | Interactive reduced-order CFD of blood flow through a stenotic artery (straight **or** carotid-style bifurcation): velocity heat map, streamlines, pressure, and wall shear stress |
 
 ## Topics in the dashboard
 
@@ -25,11 +25,12 @@ Or open [`dashboard.html`](dashboard.html) locally in a browser.
 
 ## Arterial stenosis hemodynamics (`atherosclerosis-cfd.html`)
 
-A quasi-1-D reduction of the incompressible Navier–Stokes equations models blood flow through an atherosclerotic plaque. Adjustable in real time: stenosis severity (% area reduction), plaque asymmetry (concentric → eccentric), inlet velocity, dynamic viscosity, artery diameter, plaque length, blood density, and steady vs. pulsatile flow.
+A quasi-1-D reduction of the incompressible Navier–Stokes equations models blood flow through an atherosclerotic plaque, in either a **straight artery** or a **carotid-style bifurcation** (flow divides between two daughter branches by resistance, with a flow divider and sinus/bulb). Adjustable in real time: geometry mode, stenosis severity (% area reduction), plaque asymmetry (concentric → eccentric, or bilateral → unilateral in bifurcation mode), inlet velocity, dynamic viscosity, artery diameter, plaque length, blood density, and steady vs. pulsatile flow.
 
 - **Continuity** \(U(x) = U_0 (D/H(x))^2\) drives the stenotic jet.
 - **Reynolds number** \(Re = \rho V D / \mu\) updates live and flags laminar / transitional / turbulent regimes.
 - **Poiseuille wall shear** \(\tau_w = 8\mu U / H\) and viscous loss \(dp/dx = 32\mu U/H^2\); **Bernoulli + Borda–Carnot** estimate the pressure drop.
+- **Bifurcation mode** adds daughter-branch flow division by viscous conductance, an apex flow divider (high shear), and a carotid sinus with low / reversed outer-wall shear — the preferential site of plaque.
 - Velocity heat map, particle streamlines, velocity vectors, a pressure band, and wall-shear coloring, plus axial plots of velocity, pressure, and wall shear stress. The tool labels which quantities are directly calculated, estimated, or qualitative, and is a teaching model — not a validated clinical CFD simulation.
 
 ## How to use
