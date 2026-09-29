@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Obstructive Sleep Apnea — Interactive Simulation</title>
+<meta name="description" content="Interactive physiology simulation of obstructive sleep apnea: airway collapse, a night of sleep, CPAP, and a flow-triggered expiratory relief valve. BME 3261C Biofluid Mechanics, Group 10.">
+<style>
+:root{
+  --bg:#08111f; --panel:#0f1b31; --panel2:#132340; --line:rgba(148,163,184,.18); --line2:rgba(148,163,184,.32);
+  --ink:#eaf1fb; --dim:#a9b9d1; --mut:#7488a8;
+  --inh:#3ba7e0; --exh:#ef6a5e; --epr:#34d3b0; --amber:#fbbf24; --good:#4ade80; --crit:#f2635a; --violet:#a78bfa;
+  --sans:'Segoe UI',Calibri,'Helvetica Neue',Arial,system-ui,sans-serif;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#050b16;color:var(--ink);font-family:var(--sans);overflow:hidden}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stage{position:relative;width:1280px;height:720px;flex:none;transform-origin:center center;background:
+  radial-gradient(900px 500px at 85% -10%,rgba(59,167,224,.10),transparent 60%),
+  radial-gradient(800px 500px at 0% 110%,rgba(52,211,176,.07),transparent 60%),var(--bg);
+  overflow:hidden;font-size:15px;line-height:1.35}
+button,input,select{font-family:inherit;color:inherit}
+canvas{display:block}
+
+/* header */
+#hdr{position:absolute;left:0;top:0;width:1280px;height:52px;display:flex;align-items:center;gap:18px;padding:0 20px;border-bottom:1px solid var(--line);background:rgba(8,17,31,.85)}
+#brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:.01em;white-space:nowrap}
+#brand small{display:block;font-weight:500;font-size:12px;color:var(--mut);letter-spacing:.02em}
+#brand svg{flex:none}
+#tabs{display:flex;gap:6px;margin-left:8px}
+.tab{appearance:none;border:1px solid var(--line2);background:rgba(255,255,255,.02);color:var(--dim);font-size:14px;font-weight:600;padding:7px 14px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:.15s}
+.tab .n{width:20px;height:20px;border-radius:50%;background:rgba(148,163,184,.2);display:grid;place-items:center;font-size:12px}
+.tab:hover{color:var(--ink);border-color:var(--dim)}
+.tab.on{color:#04121f;background:var(--inh);border-color:var(--inh)}
+.tab.on .n{background:rgba(4,18,31,.25);color:#04121f}
+#hdr .sp{flex:1}
+.hbtn{appearance:none;border:1px solid var(--line2);background:rgba(255,255,255,.03);color:var(--ink);font-size:13px;font-weight:600;padding:7px 12px;border-radius:9px;cursor:pointer;transition:.15s;white-space:nowrap}
+.hbtn:hover{border-color:var(--dim);background:rgba(255,255,255,.07)}
+.hbtn.go{background:var(--epr);color:#031a14;border-color:var(--epr)}
+.hbtn.go:hover{filter:brightness(1.08)}
+
+/* scenes */
+.scene{position:absolute;left:0;top:52px;width:1280px;height:668px;display:none}
+.scene.on{display:block}
+.panel{position:absolute;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.panel>canvas{position:absolute;left:0;top:0}
+.ptitle{position:absolute;left:14px;top:10px;font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);z-index:2;pointer-events:none}
+.ptitle b{color:var(--ink)}
+.note{color:var(--mut);font-size:12.5px}
+
+/* control bar */
+.bar{position:absolute;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;gap:18px;padding:0 16px}
+.grp{display:flex;flex-direction:column;gap:6px}
+.grp>label,.lbl{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.seg{display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+.seg button{appearance:none;border:0;border-right:1px solid var(--line2);background:transparent;color:var(--dim);font-size:13.5px;font-weight:600;padding:7px 12px;cursor:pointer;transition:.12s;white-space:nowrap}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:var(--ink);background:rgba(255,255,255,.05)}
+.seg button.on{background:var(--inh);color:#04121f}
+.seg.sm button{padding:6px 9px;font-size:13px}
+.seg.epr button.on{background:var(--epr);color:#031a14}
+.seg.red button.on{background:var(--crit);color:#1c0503}
+.rng{display:flex;align-items:center;gap:10px}
+.rng .val{font-family:var(--mono);font-size:13.5px;min-width:100px;text-align:right;color:var(--ink);white-space:nowrap}
+input[type=range]{-webkit-appearance:none;appearance:none;width:170px;height:6px;border-radius:4px;background:rgba(148,163,184,.28);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--ink);border:3px solid var(--inh);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--ink);border:3px solid var(--inh);cursor:pointer}
+input[type=range].epr::-webkit-slider-thumb{border-color:var(--epr)}
+input[type=range].epr::-moz-range-thumb{border-color:var(--epr)}
+.tog{appearance:none;border:1px solid var(--line2);background:rgba(255,255,255,.03);color:var(--dim);font-size:13.5px;font-weight:700;padding:8px 14px;border-radius:9px;cursor:pointer;transition:.15s;white-space:nowrap}
+.tog:hover{color:var(--ink)}
+.tog.on{background:var(--epr);border-color:var(--epr);color:#031a14}
+.tog.on.blue{background:var(--inh);border-color:var(--inh);color:#04121f}
+
+/* pills / tiles */
+.stepper{position:absolute;left:14px;right:14px;top:34px;display:flex;gap:6px;z-index:3}
+.step{flex:1;font-size:13px;line-height:1.2;padding:5px 8px;border-radius:9px;border:1px solid var(--line);color:var(--mut);background:rgba(8,17,31,.55);transition:.2s;min-height:42px;display:flex;align-items:center}
+.step b{display:block;font-weight:700;font-size:13.5px}.step i{display:block;font-style:normal;font-size:11.5px;opacity:.85}
+.step.on{color:#0b1220;background:var(--amber);border-color:var(--amber)}
+.step.on.bad{background:var(--crit);color:#1c0503;border-color:var(--crit)}
+.step.on.ok{background:var(--good);border-color:var(--good)}
+.tile{position:absolute;background:rgba(8,17,31,.55);border:1px solid var(--line);border-radius:11px;padding:6px 12px}
+.tile .k{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+.tile .v{font-family:var(--mono);font-size:22px;font-weight:600;line-height:1.1}
+.tile .u{font-size:12px;color:var(--mut);margin-left:3px;font-family:var(--sans)}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;letter-spacing:.03em}
+.b-good{background:rgba(74,222,128,.16);color:#7ef0a6}
+.b-mild{background:rgba(251,191,36,.18);color:#fcd34d}
+.b-mod{background:rgba(249,146,60,.2);color:#fdba74}
+.b-sev{background:rgba(242,99,90,.22);color:#ff9b93}
+
+/* caption (tour) */
+#cap{position:absolute;left:50%;bottom:7px;transform:translateX(-50%);width:1160px;padding:7px 24px;border-radius:14px;background:rgba(10,22,42,.92);border:1px solid var(--line2);font-size:20px;font-weight:700;text-align:center;opacity:0;transition:opacity .35s;pointer-events:none;z-index:40}
+#cap.on{opacity:1}
+#cap small{display:block;font-size:14px;font-weight:500;color:var(--dim);margin-top:1px}
+.scene{transform-origin:0 0;transition:transform .35s,left .35s}
+body.tour .scene{transform:scale(.885);left:74px}
+body.nocap #cap{display:none}
+body.nocap.tour .scene{transform:none;left:0}
+#card{position:absolute;inset:0;background:radial-gradient(900px 500px at 50% 40%,#0f2440,#050b16);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:50;padding:0 90px}
+#card.on{display:flex}
+#card h1{font-size:46px;margin:0 0 10px;letter-spacing:-.01em}
+#card p{font-size:22px;color:var(--dim);margin:6px 0;max-width:980px}
+#card ul{list-style:none;padding:0;margin:22px 0 0;text-align:left;font-size:24px;max-width:980px}
+#card li{margin:14px 0;padding-left:44px;position:relative}
+#card li i{position:absolute;left:0;top:2px;width:30px;height:30px;border-radius:50%;background:var(--epr);color:#031a14;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:17px}
+
+/* modal */
+#modal{position:absolute;inset:0;background:rgba(3,8,16,.82);display:none;z-index:60;padding:34px 60px}
+#modal.on{display:block}
+#modal .box{height:100%;overflow:auto;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line2);border-radius:16px;padding:22px 30px;font-size:14.5px}
+#modal h2{margin:0 0 4px;font-size:22px}
+#modal h3{margin:16px 0 4px;font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--epr)}
+#modal p,#modal li{color:var(--dim);margin:4px 0}
+#modal code{font-family:var(--mono);color:var(--ink);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;font-size:13px}
+#modal a{color:var(--inh)}
+#modal .x{position:absolute;right:76px;top:46px}
+#modal ul{padding-left:20px}
+#modal table{border-collapse:collapse;width:100%;font-size:13.5px;margin:6px 0}
+#modal td,#modal th{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left;color:var(--dim)}
+#modal th{color:var(--ink)}
+
+/* advanced popover */
+.pop{position:absolute;background:var(--panel2);border:1px solid var(--line2);border-radius:14px;padding:14px 18px;display:none;z-index:20;box-shadow:0 10px 40px rgba(0,0,0,.55)}
+.pop.on{display:block}
+.pop .row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:8px 0;font-size:13.5px;color:var(--dim)}
+.pop .row span:first-child{min-width:190px}
+.pop h4{margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--epr)}
+
+/* table (night report) */
+table.rep{width:100%;border-collapse:collapse;font-size:14px}
+table.rep th{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--mut);text-align:right;padding:4px 6px;font-weight:700}
+table.rep th:first-child{text-align:left}
+table.rep td{padding:5px 6px;border-top:1px solid var(--line);text-align:right;font-family:var(--mono);font-size:15px}
+table.rep td:first-child{text-align:left;font-family:var(--sans);color:var(--dim);font-size:13.5px}
+.c-good{color:#7ef0a6}.c-mild{color:#fcd34d}.c-mod{color:#fdba74}.c-sev{color:#ff8f86}
+
+body.embed #hdr .hide-embed{display:none}
+</style>
+</head>
+<body>
+<div id="viewport">
+<div id="stage">
+
+  <!-- header -->
+  <div id="hdr">
+    <div id="brand">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#0f2a4d" stroke="#3ba7e0" stroke-width="1.5"/><path d="M6 19c3-7 6-7 10 0s7 7 10 0" fill="none" stroke="#3ba7e0" stroke-width="2.2" stroke-linecap="round"/><path d="M8 13h6" stroke="#ef6a5e" stroke-width="2" stroke-linecap="round"/></svg>
+      <div>Sleep Apnea Simulation<small>Group 10 · BME 3261C Biofluid Mechanics</small></div>
+    </div>
+    <div id="tabs">
+      <button class="tab on" data-scene="1"><span class="n">1</span>How it happens</button>
+      <button class="tab" data-scene="2"><span class="n">2</span>What it does</button>
+      <button class="tab" data-scene="3"><span class="n">3</span>Our solution</button>
+    </div>
+    <div class="sp"></div>
+    <button class="hbtn go" id="btnTour" title="Auto-play a guided walkthrough (T)">▶ Guided tour</button>
+    <button class="hbtn hide-embed" id="btnInfo" title="Model notes and sources (I)">ⓘ Model notes</button>
+    <button class="hbtn hide-embed" id="btnFs" title="Full screen (F)">⛶</button>
+  </div>
+
+  <!-- ================= SCENE 1 : mechanism ================= -->
+  <section class="scene on" id="s1">
+    <div class="panel" id="anat" style="left:20px;top:8px;width:676px;height:552px">
+      <canvas id="cAnat" width="1352" height="1104" style="width:676px;height:552px"></canvas>
+      <div class="ptitle"><b>Upper airway</b> · side view, sleeping</div>
+      <div class="stepper" id="stepper">
+        <div class="step" data-i="0"><span><b>Asleep</b><i>airway open</i></span></div>
+        <div class="step" data-i="1"><span><b>Narrowing</b><i>snoring, flow-limited</i></span></div>
+        <div class="step" data-i="2"><span><b>Obstruction</b><i>effort, no airflow</i></span></div>
+        <div class="step" data-i="3"><span><b>Arousal</b><i>airway reopens</i></span></div>
+        <div class="step" data-i="4"><span><b>Gasp</b><i>recovery breaths</i></span></div>
+      </div>
+    </div>
+    <div class="panel" id="trc" style="left:712px;top:8px;width:548px;height:340px">
+      <canvas id="cTrace" width="1096" height="680" style="width:548px;height:340px"></canvas>
+      <div class="ptitle"><b>Sleep-lab strip</b> · last 90 s</div>
+    </div>
+    <div class="panel" id="gge" style="left:712px;top:360px;width:548px;height:200px">
+      <canvas id="cGauge" width="1096" height="400" style="width:548px;height:200px"></canvas>
+      <div class="ptitle"><b>Why it collapses</b> · pressure vs closing pressure</div>
+      <div class="tile" style="left:250px;top:32px;width:140px;height:54px"><div class="k">SpO₂</div><div class="v" id="tSpo2">96<span class="u">%</span></div></div>
+      <div class="tile" style="left:398px;top:32px;width:140px;height:54px"><div class="k">PaCO₂</div><div class="v" id="tCo2">43<span class="u">mmHg</span></div></div>
+      <div class="tile" style="left:250px;top:92px;width:140px;height:54px"><div class="k">Effort peak</div><div class="v" id="tEff">6<span class="u">cmH₂O</span></div></div>
+      <div class="tile" style="left:398px;top:92px;width:140px;height:54px"><div class="k">Events</div><div class="v" id="tEv">0<span class="u">/ <span id="tAhi">0</span> per h</span></div></div>
+      <div id="gnote" class="note" style="position:absolute;left:250px;right:12px;top:152px;font-size:12.5px;line-height:1.3;color:var(--dim)"></div>
+    </div>
+    <div class="bar" id="ctl1" style="left:20px;top:572px;width:1240px;height:88px">
+      <div class="grp"><label>Patient airway</label>
+        <div class="seg" id="pat1">
+          <button data-p="healthy">Healthy</button><button data-p="mild">Mild</button><button data-p="moderate">Moderate</button><button data-p="severe" class="on">Severe</button>
+        </div></div>
+      <div class="grp"><label>Sleep stage</label>
+        <div class="seg" id="stg1"><button data-s="N2" class="on">NREM</button><button data-s="REM">REM</button></div></div>
+      <div class="grp"><label>CPAP</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="tog" id="cpapT1">Off</button>
+          <div class="rng"><input type="range" id="cpapR1" class="epr" min="4" max="16" step="0.5" value="10" style="width:130px"><span class="val" id="cpapV1">10 cmH₂O</span></div>
+        </div></div>
+      <div class="grp"><label>Speed</label>
+        <div class="seg" id="spd1"><button data-v="1">1×</button><button data-v="2" class="on">2×</button><button data-v="4">4×</button></div></div>
+      <div style="flex:1"></div>
+      <button class="hbtn" id="advT">⚙ Physiology traits</button>
+      <button class="hbtn" id="pauseT">❚❚ Pause</button>
+    </div>
+    <div class="pop" id="adv" style="left:700px;top:330px;width:540px">
+      <h4>Four OSA traits (Eckert et al. 2013)</h4>
+      <div class="row"><span>Airway collapsibility, Pcrit</span><div class="rng"><input type="range" id="aPc" min="-9" max="4" step="0.1"><span class="val" id="aPcV"></span></div></div>
+      <div class="row"><span>Dilator-muscle responsiveness</span><div class="rng"><input type="range" id="aGd" min="0" max="5" step="0.1"><span class="val" id="aGdV"></span></div></div>
+      <div class="row"><span>Arousal threshold (effort)</span><div class="rng"><input type="range" id="aAr" min="8" max="32" step="0.5"><span class="val" id="aArV"></span></div></div>
+      <div class="row"><span>Ventilatory loop gain</span><div class="rng"><input type="range" id="aLg" min="0.3" max="1.4" step="0.05"><span class="val" id="aLgV"></span></div></div>
+      <div class="note" style="margin-top:6px">Anatomy (Pcrit) is only one of four causes. Muscle response, arousal threshold and loop gain vary from patient to patient.</div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 2 : night ================= -->
+  <section class="scene" id="s2">
+    <div class="panel" id="s2ctl" style="left:20px;top:8px;width:336px;height:196px;padding:12px 14px">
+      <div class="lbl" style="margin-bottom:6px">Patient</div>
+      <div class="seg sm" id="pat2" style="margin-bottom:12px">
+        <button data-p="healthy">Healthy</button><button data-p="mild">Mild</button><button data-p="moderate">Moderate</button><button data-p="severe" class="on">Severe</button>
+      </div>
+      <div class="lbl" style="margin-bottom:4px">CPAP pressure (treated night)</div>
+      <div class="rng" style="margin-bottom:12px"><input type="range" id="cpapR2" class="epr" min="4" max="16" step="0.5" value="10" style="width:210px"><span class="val" id="cpapV2" style="min-width:86px">10 cmH₂O</span></div>
+      <div style="display:flex;gap:8px;align-items:center"><button class="tog blue on" id="replay" style="padding:7px 12px">↻ Replay</button><div class="seg sm" id="spd2"><button data-v="0.5">Slow</button><button data-v="1" class="on">Normal</button><button data-v="2">Fast</button></div></div>
+    </div>
+    <div class="panel" id="rep" style="left:20px;top:216px;width:336px;height:444px;padding:12px 14px">
+      <div class="lbl" style="margin-bottom:2px">Night report <span id="repT" style="color:var(--dim);letter-spacing:0;text-transform:none;font-weight:600"></span></div>
+      <table class="rep" id="repTable"></table>
+      <div class="note" style="margin-top:8px;line-height:1.35">AHI = apneas + hypopneas per hour of sleep. ODI = ≥3% oxygen dips per hour. Severity bands follow AASM: &lt;5 normal · 5–15 mild · 15–30 moderate · ≥30 severe.</div>
+    </div>
+    <div class="panel" id="nA" style="left:372px;top:8px;width:888px;height:250px"><canvas id="cNA" width="1776" height="500" style="width:888px;height:250px"></canvas></div>
+    <div class="panel" id="nB" style="left:372px;top:266px;width:888px;height:250px"><canvas id="cNB" width="1776" height="500" style="width:888px;height:250px"></canvas></div>
+    <div class="panel" id="evl" style="left:372px;top:524px;width:436px;height:136px"><canvas id="cEv" width="872" height="272" style="width:436px;height:136px"></canvas></div>
+    <div class="panel" id="cons" style="left:820px;top:524px;width:440px;height:136px;padding:12px 14px">
+      <div class="lbl" style="margin-bottom:4px">Why it matters · untreated OSA is associated with</div>
+      <div id="consList" style="font-size:13.5px;color:var(--dim);line-height:1.45"></div>
+    </div>
+  </section>
+
+  <!-- ================= SCENE 3 : solution ================= -->
+  <section class="scene" id="s3">
+    <div class="panel" id="dev" style="left:20px;top:8px;width:580px;height:262px">
+      <canvas id="cDev" width="1160" height="524" style="width:580px;height:262px"></canvas>
+      <div class="ptitle"><b>Airflow path</b> · one design change</div>
+    </div>
+    <div class="panel" id="ctl3" style="left:20px;top:280px;width:580px;height:192px;padding:10px 16px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px">
+        <div><div class="lbl">CPAP pressure</div><div class="rng"><input type="range" id="sP" min="4" max="20" step="0.5" value="10" style="width:112px"><span class="val" id="vP">10.0 cmH₂O</span></div></div>
+        <div><div class="lbl" style="color:var(--epr)">Expiratory relief</div><div class="rng"><input type="range" id="sRel" class="epr" min="0" max="3" step="0.1" value="3" style="width:112px"><span class="val" id="vRel">3.0 cmH₂O</span></div></div>
+        <div><div class="lbl">Tidal volume</div><div class="rng"><input type="range" id="sVT" min="0.3" max="0.8" step="0.05" value="0.5" style="width:112px"><span class="val" id="vVT">0.50 L</span></div></div>
+        <div><div class="lbl">Breathing rate</div><div class="rng"><input type="range" id="sRR" min="10" max="25" step="1" value="15" style="width:112px"><span class="val" id="vRR">15 /min</span></div></div>
+        <div><div class="lbl">Airway resistance R</div><div class="rng"><input type="range" id="sR" min="1" max="8" step="0.5" value="3" style="width:112px"><span class="val" id="vR">3.0 cmH₂O·s/L</span></div></div>
+        <div><div class="lbl">Lung compliance C</div><div class="rng"><input type="range" id="sC" min="0.05" max="0.2" step="0.01" value="0.10" style="width:112px"><span class="val" id="vC">0.10 L/cmH₂O</span></div></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+        <button class="tog on" id="eprT">Relief valve ON</button>
+        <button class="hbtn" id="resetDeck">Reset to deck values</button>
+        <span id="deckBadge" class="badge b-good" style="margin-left:auto"></span>
+      </div>
+    </div>
+    <div class="panel" id="swp" style="left:20px;top:482px;width:580px;height:178px">
+      <canvas id="cSwp" width="1160" height="356" style="width:580px;height:178px"></canvas>
+      <div class="ptitle"><b>Comfort vs therapy</b> · sweep the relief</div>
+    </div>
+    <div class="panel" id="wav" style="left:616px;top:8px;width:644px;height:262px">
+      <canvas id="cWav" width="1288" height="524" style="width:644px;height:262px"></canvas>
+      <div class="ptitle"><b>One breath</b> · flow, mask pressure, muscle effort</div>
+    </div>
+    <div class="panel" id="loop" style="left:616px;top:280px;width:300px;height:380px">
+      <canvas id="cLoop" width="600" height="760" style="width:300px;height:380px"></canvas>
+      <div class="ptitle"><b>Work-of-breathing loop</b></div>
+    </div>
+    <div class="panel" id="met" style="left:928px;top:280px;width:332px;height:380px">
+      <canvas id="cMet" width="664" height="760" style="width:332px;height:380px"></canvas>
+      <div class="ptitle"><b>Before → after</b></div>
+    </div>
+  </section>
+
+  <div id="cap"></div>
+  <div id="card"></div>
+  <div id="modal"><div class="box" id="modalBox"></div><button class="hbtn x" id="modalX">Close ✕</button></div>
+</div>
+</div>
+
+<script>
+/* =====================================================================
+   OSA physiology core  (pure JS, no DOM)
+   ---------------------------------------------------------------------
+   Upper airway  : Starling resistor (collapsible tube) in series with a
+                   single-compartment RC lung (same R, C, VT, RR, I:E as the deck)
+   Gas exchange  : alveolar CO2 / O2 mass balance, Severinghaus SaO2, lung-to-finger delay
+   Control       : delayed chemoreflex -> effort + dilator drive; effort-triggered arousal
+   Endotypes     : Pcrit, dilator responsiveness, arousal threshold, loop gain
+                   (Eckert et al., AJRCCM 2013)
+   ===================================================================== */
+const OSA = (function () {
+  'use strict';
+
+  /* ---------- constants (deck parameters where they exist) ---------- */
+  const K = {
+    R_TOTAL: 3.0,       // cmH2O.s/L  (deck)   = R_LUNG + R_US(healthy)
+    R_LUNG: 1.0,
+    C: 0.1,             // L/cmH2O    (deck)
+    VT: 0.5,            // L          (deck)
+    RR: 15,             // /min       (deck)
+    TI_FRAC: 0.4,       // Ti = 1.6 s, Te = 2.4 s  (I:E = 1:1.5, reproduces the deck's numbers)
+    VD: 0.28,           // L  anatomic + apparatus + alveolar dead space
+    VCO2: 0.200,        // L/min (sleep)
+    VO2: 0.235,         // L/min (sleep)
+    PB_H2O: 713,        // mmHg (760 - 47)
+    FIO2: 0.2093,
+    CCO2: 0.0444,       // L/mmHg  effective body CO2 capacitance  (apnea: ~4.5 mmHg/min)
+    CIRC_DELAY: 12,     // s   lung -> finger
+    OXI_AVG: 3,         // s   oximeter averaging
+    TAU_CO2: 12,        // s   central chemoreceptor lag
+    TAU_O2: 8,          // s   carotid body lag
+    SPO2_SET: 95,       // %   hypoxic drive threshold
+    GC: 0.65,           // 1/mmHg  CO2 gain (before loop-gain scaling)
+    GO: 0.22,           // 1/%     O2 gain
+    QREF_EXP: 0.33,     // L/s   flow at which relief saturates (deck peak expiratory flow)
+    AR_OFFSET: -8.0,    // cmH2O Pcrit shift while aroused (dilators back on)
+    TAU_TONE: 6,        // s   dilator tone recovery after arousal
+  };
+  K.T = 60 / K.RR;
+  K.TI = K.T * K.TI_FRAC;
+  K.TE = K.T - K.TI;
+  K.PACO2_SET = K.PB_H2O * K.VCO2 / (K.RR * (K.VT - K.VD));      // ~43.2 mmHg
+
+  /* drive that gives VT = 0.5 L for the healthy R (forward RC lung, half-sine Pmus) */
+  function findD0() {
+    let lo = 1, hi = 20;
+    for (let it = 0; it < 60; it++) {
+      const D = (lo + hi) / 2; let x = 0, vt = 0; const dt = 0.005;
+      for (let t = 0; t < K.TI + 1e-9; t += dt) {
+        const pm = D * Math.sin(Math.PI * t / K.TI);
+        const q = (pm - x / K.C) / K.R_TOTAL; x += q * dt; if (q > 0) vt += q * dt;
+      }
+      if (vt < K.VT) lo = D; else hi = D;
+    }
+    return (lo + hi) / 2;
+  }
+  K.D0 = findD0();
+
+  /* ---------- helpers ---------- */
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+  const sstep = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+  function sevSat(po2) { po2 = Math.max(po2, 1); return 100 / (23400 / (po2 * po2 * po2 + 150 * po2) + 1); }   // Severinghaus, %
+
+  /* ---------- patient presets (endotypes) ----------
+     pcrit : closing pressure in N2 sleep at eupneic drive (cmH2O)   [controls ~ -6, OSA ~ 0 ; Eckert 2013]
+     rUs   : upstream (nasal + pharyngeal) resistance (cmH2O.s/L)
+     gDil  : dilator responsiveness: Pcrit fall per unit of extra drive (cmH2O)
+     arTh  : arousal threshold, peak inspiratory effort (cmH2O)
+     lg    : ventilatory loop gain scale (1 = nominal)
+     o2res : effective O2 store (L)  ~ FRC + blood     aa: A-a gradient (mmHg)                          */
+  const PRESETS = {
+    healthy:  { key: 'healthy',  name: 'Healthy',      pcrit: -6.5, rUs: 2.0, gDil: 3.5, arTh: 30, lg: 0.55, o2res: 3.3, aa: 6 },
+    mild:     { key: 'mild',     name: 'Mild OSA',     pcrit: -0.6, rUs: 3.5, gDil: 3.0, arTh: 22, lg: 0.70, o2res: 3.1, aa: 8 },
+    moderate: { key: 'moderate', name: 'Moderate OSA', pcrit:  0.5, rUs: 5.0, gDil: 1.6, arTh: 19, lg: 0.85, o2res: 2.9, aa: 10 },
+    severe:   { key: 'severe',   name: 'Severe OSA',   pcrit:  1.2, rUs: 6.0, gDil: 1.0, arTh: 15, lg: 1.00, o2res: 2.6, aa: 14 },
+  };
+
+  /* stage-dependent modifiers */
+  const STAGE = {
+    W:   { dP: -10, lg: 1.0, ar: 1.0, hr: 68, sbp: 118 },
+    N1:  { dP: 0.5, lg: 1.1, ar: 0.8, hr: 62, sbp: 114 },
+    N2:  { dP: 0.0, lg: 1.0, ar: 1.0, hr: 58, sbp: 110 },
+    N3:  { dP: -1.5, lg: 0.6, ar: 1.5, hr: 54, sbp: 104 },
+    REM: { dP: 3.0, lg: 0.9, ar: 0.8, hr: 63, sbp: 116 },
+  };
+  const SPONT_AR_PER_H = { N1: 30, N2: 12, N3: 3, REM: 10, W: 0 };
+
+  /* ---------- typical 8-h architecture (target stage vs. minutes in bed) ---------- */
+  function buildSchedule(rng) {
+    const segs = []; let t = 0;
+    const push = (st, m) => { if (m > 0) { segs.push({ st, t0: t, t1: t + m }); t += m; } };
+    const j = () => Math.round((rng() - 0.5) * 4);                  // +-2 min jitter
+    push('W', 13 + Math.round(rng() * 5));                          // sleep latency
+    //         N1  N2a N3  N2b REM     (5 cycles of ~90 min; N3 front-loaded, REM back-loaded)
+    const cyc = [[3, 15, 36, 26, 10], [2, 16, 28, 28, 16], [2, 26, 14, 26, 22], [2, 32, 6, 20, 30], [2, 34, 0, 14, 40]];
+    for (let c = 0; c < cyc.length; c++) {
+      const [n1, n2a, n3, n2b, rem] = cyc[c];
+      push('N1', n1); push('N2', n2a + j()); push('N3', n3); push('N2', n2b + j()); push('REM', rem + j());
+    }
+    if (t < 480) push('N2', Math.min(14, 480 - t));
+    if (t < 480) push('W', 480 - t);
+    segs[segs.length - 1].t1 = Math.max(segs[segs.length - 1].t1, 480);
+    return segs;
+  }
+  function targetAt(segs, tMin) { for (let i = 0; i < segs.length; i++) if (tMin < segs[i].t1) return segs[i].st; return 'N2'; }
+
+  /* =====================================================================
+     Sim : one patient, one night (or live view)
+     ===================================================================== */
+  function Sim(patient, therapy, opts) {
+    opts = opts || {};
+    this.p = Object.assign({}, patient);
+    this.th = Object.assign({ cpap: 0, relief: 0 }, therapy || {});
+    this.rng = mulberry32(opts.seed || 1);
+    this.stageMode = opts.stageMode || 'night';          // 'night' (schedule) or fixed 'N2'|'REM'|'W'
+    this.fixedStage = opts.fixedStage || 'N2';
+    this.segs = buildSchedule(mulberry32((opts.seed || 1) * 7919));
+    this.record = !!opts.record;
+    this.t = 0;
+    // mechanics
+    this.x = 0; this.q = 0; this.tb = K.T - 0.001; this.Db = K.D0; this.Tb = K.T; this.Tib = K.TI;
+    this.pmus = 0; this.vtAcc = 0; this.pn = this.th.cpap;
+    this.lumen = 1; this.pcritEff = -5; this.psite = 0;
+    // gas
+    this.paco2 = K.PACO2_SET; this.co2s = K.PACO2_SET;
+    this.fao2 = K.FIO2 - K.VO2 / (K.RR * (K.VT - K.VD));
+    this.sao2 = this._sao2(); this.sao2s = this.sao2;
+    this.dly = []; for (let i = 0; i < Math.round(K.CIRC_DELAY / 0.05); i++) this.dly.push(this.sao2);
+    this.dlyI = 0; this.spo2 = this.sao2; this.spo2f = this.sao2;
+    // control / arousal
+    this.arTimer = 0; this.arBoost = 0.45; this.tone = 0; this.arThJ = 1; this.sinceAr = 999; this.arDur = 8; this.arCount = 0; this.arResp = 0;
+    this.d = 0.5; this.stage = 'N2'; this.target = 'N2';
+    this.E = 0; this.u = 1;
+    // event scoring
+    this.baseVT = K.VT; this.ev = null; this.pending = []; this.events = []; this.hist1 = [];   // 1 Hz spo2 ring for pre-event ref
+    this.nApnea = 0; this.nHypo = 0; this.tst = 0; this.nSpontAr = 0;
+    this.odi = { n: 0, ref: [], inD: false, times: [] }; this.t90 = 0; this.minSpo2 = 100;
+    this.stageSecs = { W: 0, N1: 0, N2: 0, N3: 0, REM: 0 };
+    this.last1 = 0; this.series = { t: [], spo2: [], stage: [], hr: [], sbp: [] };
+    this.arTimes = []; this.hrSurge = 0; this.sbpSurge = 0; this.hrBrady = 0;
+    this.lastBreathEnd = 0; this.breathN = 0; this.wasAp = false;
+    this.warm = opts.warm || 0;
+  }
+  Sim.prototype._sao2 = function () {
+    const pao2 = this.fao2 * K.PB_H2O; return sevSat(pao2 - this.p.aa);
+  };
+
+  Sim.prototype._stageUpdate = function (dt) {
+    const tMin = this.t / 60;
+    if (this.stageMode === 'night') this.target = targetAt(this.segs, tMin); else this.target = this.fixedStage;
+    if (this.stageMode !== 'night') {           // fixed-stage live mode
+      this.stage = this.arTimer > 0 ? 'N1' : this.fixedStage; if (this.fixedStage === 'W') this.stage = 'W'; return;
+    }
+    const dT = { W: 0.0, N1: 0.15, N2: 0.5, N3: 0.9, REM: 0.5 }[this.target];
+    const tau = dT > this.d ? 100 : 40;         // depth builds slowly, is lost quickly
+    this.d += (dT - this.d) * dt / tau;
+    let st;
+    if (this.target === 'W') st = 'W';
+    else if (this.arTimer > 15) st = 'W';
+    else if (this.arTimer > 0) st = 'N1';
+    else if (this.target === 'REM') st = this.sinceAr > 45 ? 'REM' : (this.d < 0.3 ? 'N1' : 'N2');
+    else st = this.d < 0.28 ? 'N1' : (this.d < 0.68 || this.target !== 'N3' ? 'N2' : 'N3');
+    this.stage = st;
+  };
+
+  Sim.prototype._startBreath = function () {
+    const p = this.p, S = STAGE[this.stage];
+    // chemoreflex excess drive
+    const lgEff = p.lg * S.lg;
+    const dCO2 = this.co2s - K.PACO2_SET, dO2 = Math.max(0, K.SPO2_SET - this.sao2s);
+    this.E = lgEff * (K.GC * dCO2 + K.GO * dO2);
+    let u = 1 + this.E;
+    if (this.arTimer > 0) u = Math.max(u, 1) + this.arBoost;   // wakefulness drive after arousal (bigger after a respiratory arousal)
+    u = clamp(u, 0.92, 5.5);                                // floor: hypocapnic drive reduction, rhythm continues
+    if (this.stage === 'W') u = Math.max(u, 1.05);
+    this.u = u; this.Db = K.D0 * u;
+    this.Tb = this.arTimer > 0 ? 3.0 : K.T; this.Tib = this.Tb * K.TI_FRAC;
+    this.tb = 0; this.vtAcc = 0;
+  };
+
+  Sim.prototype._endBreath = function () {
+    const VT = this.vtAcc, VA = Math.max(0, VT - K.VD);
+    // CO2 washout, O2 delivery (per breath)
+    this.paco2 += -(VA * this.paco2 / K.PB_H2O) / K.CCO2;
+    this.paco2 = Math.max(this.paco2, 15);
+    this.fao2 += VA * (K.FIO2 - this.fao2) / this.p.o2res;
+    this.fao2 = clamp(this.fao2, 0.02, 0.21);
+    // event scoring on breath amplitude
+    const ratio = VT / this.baseVT, t = this.t;
+    if (ratio >= 0.8 && ratio <= 1.3 && !this.ev && this.arTimer <= 0) this.baseVT += (VT - this.baseVT) * (this.Tb / 60);
+    if (this.stage !== 'W') {
+      if (ratio < 0.7) {
+        if (!this.ev) this.ev = { t0: t - this.Tb, minR: ratio, arousal: false, nBreath: 0 };
+        this.ev.minR = Math.min(this.ev.minR, ratio); this.ev.nBreath++;
+      } else if (this.ev) this._closeEvent(t - this.Tb + 0);
+    }
+    this.breathN++;
+  };
+  Sim.prototype._closeEvent = function (tEnd) {
+    const e = this.ev; this.ev = null;
+    e.t1 = tEnd; e.dur = e.t1 - e.t0;
+    if (e.dur >= 10) { e.arousalAtEnd = this.arTimer > 0 || this.sinceAr < 6; this.pending.push(e); }
+  };
+  Sim.prototype._resolvePending = function () {
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const e = this.pending[i];
+      if (this.t < e.t1 + 22) continue;
+      this.pending.splice(i, 1);
+      // pre-event reference (max SpO2 in 30 s before start), nadir within window
+      const a = Math.max(0, Math.floor(e.t0) - 30), b = Math.floor(e.t0), c = Math.floor(e.t1 + 22);
+      let ref = 0, nad = 100;
+      for (let s = a; s <= b; s++) { const v = this.hist1[s]; if (v !== undefined && v > ref) ref = v; }
+      for (let s = b; s <= c; s++) { const v = this.hist1[s]; if (v !== undefined && v < nad) nad = v; }
+      e.drop = Math.max(0, ref - nad); e.nadir = nad;
+      const isApnea = e.minR <= 0.10;
+      if (isApnea) { e.type = 'apnea'; this.nApnea++; this.events.push(e); }
+      else if (e.drop >= 3 || e.arousalAtEnd) { e.type = 'hypopnea'; this.nHypo++; this.events.push(e); }
+    }
+  };
+
+  Sim.prototype._arousal = function (resp) {
+    if (this.arTimer > 0) return;
+    this.arDur = 5 + this.rng() * 8 + (resp ? Math.min(6, Math.max(0, (K.SPO2_SET - this.sao2s)) * 0.3) : 0);
+    this.arBoost = resp ? 1.2 : 0.45; this.arTimer = this.arDur; this.tone = 1; this.sinceAr = 0; this.arCount++; this.arTimes.push(this.t);
+    this.d = resp ? Math.min(this.d, 0.18) : this.d * 0.8;
+    this.arThJ = 0.85 + this.rng() * 0.3;
+    if (resp) { this.arResp++; this.hrSurge = 1; this.sbpSurge = clamp((K.SPO2_SET - this.spo2s0()) / 12, 0.25, 1.6); }
+    else { this.hrSurge = 0.5; this.sbpSurge = 0.3; }
+  };
+  Sim.prototype.spo2s0 = function () { return this.spo2; };
+
+  /* one integration step */
+  Sim.prototype.step = function (dt) {
+    const p = this.p, th = this.th;
+    this.t += dt;
+    this._stageUpdate(dt);
+    const S = STAGE[this.stage];
+    if (this.arTimer > 0) { this.arTimer -= dt; if (this.arTimer <= 0) { this.arTimer = 0; } }
+    else { this.sinceAr += dt; this.tone = Math.max(0, this.tone - dt / K.TAU_TONE); }
+    // breath scheduling
+    this.tb += dt;
+    if (this.tb >= this.Tb) { if (this.breathN > 0 || this.tb > 0) this._endBreath(); this._startBreath(); }
+    const insp = this.tb < this.Tib;
+    this.pmus = insp ? this.Db * Math.sin(Math.PI * this.tb / this.Tib) : 0;
+
+    // Pcrit at this instant
+    const phasic = insp ? -1.0 * Math.sin(Math.PI * this.tb / this.Tib) : (this.tb - this.Tib) / (this.Tb - this.Tib) > 0.5 ? 1.0 : 0.0;
+    const toneW = this.arTimer > 0 ? 1 : this.tone;
+    const pcrit = p.pcrit + S.dP - p.gDil * (Math.min(this.u, 4) - 1) + phasic + K.AR_OFFSET * toneW * (this.stage === 'W' ? 0 : 1);
+    this.pcritEff = pcrit;
+
+    // flow through Starling resistor + RC lung
+    //   inspiration : forward RC lung driven by Pmus, limited by the Starling resistor
+    //   expiration  : braked, half-sine flow (same prescribed-breath idea as the deck; real exhalation is
+    //                 slowed by the upper airway and post-inspiratory diaphragm), throttled only by airway closure
+    const Rus = p.rUs, Rl = K.R_LUNG;
+    let q, pn = th.cpap;
+    if (insp) {
+      this.xStart = null;
+      const drive = this.pmus - this.x / K.C;
+      const qo = Math.max(0, drive) / (Rus + Rl);
+      const ql = pn > pcrit ? (pn - pcrit) / Rus : 0;
+      q = Math.min(qo, ql);
+    } else {
+      const Te = this.Tb - this.Tib, te = this.tb - this.Tib;
+      if (this.xStart === null) this.xStart = Math.max(this.x, 0);
+      const qp = this.xStart * (Math.PI / (2 * Te)) * Math.sin(Math.PI * te / Te);           // L/s out (positive number)
+      if (th.relief > 0) pn = th.cpap - th.relief * Math.min(1, qp / K.QREF_EXP);          // flow-triggered relief
+      const psite = pn + 0.5 * Rus * qp;
+      const m = sstep((psite - pcrit) / 2.0);                                                 // closure if site pressure < Pcrit
+      q = -qp * m;
+    }
+    this.pn = pn; this.q = q;
+    this.x += q * dt; if (this.x < 0) this.x = 0;
+    if (q > 0) this.vtAcc += q * dt;
+    // display lumen (fraction of open area) from pressure at the collapse site
+    const site = q >= 0 ? pn - 0.5 * Rus * q : pn + 0.5 * Rus * Math.abs(q);
+    this.psite = site;
+    const marg = site - pcrit;
+    const Ltar = 0.05 + 0.95 * (1 - Math.exp(-Math.max(0, marg) / 4.5));
+    this.lumen += (Ltar - this.lumen) * Math.min(1, dt / 0.12);
+
+    // continuous gas production / consumption
+    this.paco2 += (K.VCO2 / 60) * dt / K.CCO2;
+    this.fao2 -= (K.VO2 / 60) * dt / p.o2res;
+    this.fao2 = Math.max(this.fao2, 0.01);
+    this.sao2 = this._sao2();
+    // delays / lags
+    this.co2s += (this.paco2 - this.co2s) * dt / K.TAU_CO2;
+    this.sao2s += (this.sao2 - this.sao2s) * dt / K.TAU_O2;
+    // finger SpO2 (transport delay + averaging)
+    this.dly[this.dlyI] = this.sao2; this.dlyI = (this.dlyI + 1) % this.dly.length;
+    const del = this.dly[this.dlyI];
+    this.spo2f += (del - this.spo2f) * dt / K.OXI_AVG; this.spo2 = this.spo2f;
+
+    // arousal: effort at threshold while the airway is compromised, or spontaneous
+    if (this.arTimer <= 0 && this.stage !== 'W') {
+      const thr = p.arTh * S.ar * this.arThJ;
+      if (this.pmus >= thr && this.lumen < 0.65) this._arousal(true);
+      else {
+        const r = (SPONT_AR_PER_H[this.stage] || 0) / 3600;
+        if (this.rng() < r * dt) { this.nSpontAr++; this._arousal(false); }
+      }
+    }
+    // bookkeeping at 1 Hz
+    if (this.t - this.last1 >= 1) {
+      this.last1 = Math.floor(this.t); const s = this.last1;
+      this.hist1[s] = this.spo2;
+      this._resolvePending();
+      if (this.stage !== 'W') this.tst++; this.stageSecs[this.stage]++;
+      if (this.stage !== 'W') { if (this.spo2 < 90) this.t90++; if (this.spo2 < this.minSpo2) this.minSpo2 = this.spo2; }
+      // ODI (>=3% from rolling 2-min max)
+      const ref = this.odi.ref; ref.push(this.spo2); if (ref.length > 120) ref.shift();
+      let mx = 0; for (let i = 0; i < ref.length; i++) if (ref[i] > mx) mx = ref[i];
+      if (this.stage !== 'W') {
+        if (!this.odi.inD && this.spo2 <= mx - 3) { this.odi.inD = true; this.odi.n++; this.odi.times.push(s); }
+        else if (this.odi.inD && this.spo2 >= mx - 1) this.odi.inD = false;
+      }
+      // illustrative HR / SBP channel
+      this.hrSurge *= Math.exp(-1 / 14); this.sbpSurge *= Math.exp(-1 / 16);
+      const apneic = this.q === 0 && this.lumen < 0.2 && this.arTimer <= 0;
+      this.hrBrady += ((apneic ? 1 : 0) - this.hrBrady) * 0.15;
+      const hr = S.hr - 5 * this.hrBrady + 16 * this.hrSurge;
+      const sbp = S.sbp + 28 * this.sbpSurge + 6 * (this.hrBrady);
+      if (this.record) {
+        this.series.t.push(s); this.series.spo2.push(this.spo2); this.series.stage.push(this.stage);
+        this.series.hr.push(hr); this.series.sbp.push(sbp);
+      }
+    }
+  };
+
+  Sim.prototype.summary = function () {
+    const tstH = Math.max(this.tst, 1) / 3600;
+    const ss = this.stageSecs, tot = Math.max(1, this.tst);
+    const dur = this.events.map(e => e.dur);
+    return {
+      ahi: (this.nApnea + this.nHypo) / tstH, apneaI: this.nApnea / tstH, hypoI: this.nHypo / tstH,
+      odi: this.odi.n / tstH, t90: 100 * this.t90 / tot, minSpo2: this.minSpo2,
+      arousalI: this.arCount / tstH, respArI: this.arResp / tstH,
+      tstH: tstH, eff: 100 * this.tst / (this.t || 1),
+      n3: 100 * ss.N3 / tot, rem: 100 * ss.REM / tot, n1: 100 * ss.N1 / tot, n2: 100 * ss.N2 / tot,
+      meanDur: dur.length ? dur.reduce((a, b) => a + b, 0) / dur.length : 0,
+      maxDur: dur.length ? Math.max.apply(null, dur) : 0,
+      nEvents: this.events.length,
+    };
+  };
+
+  function runNight(patient, therapy, seed, hours) {
+    const s = new Sim(patient, therapy, { seed: seed || 1, record: true });
+    const dt = 0.05, N = Math.round((hours || 8) * 3600 / dt);
+    for (let i = 0; i < N; i++) s.step(dt);
+    return s;
+  }
+
+  return { K, PRESETS, STAGE, Sim, runNight, sevSat, mulberry32, buildSchedule, targetAt };
+})();
+
+
+</script>
+<script>
+'use strict';
+/* =====================================================================
+   App core: helpers, global state, clock, scaling, URL parameters
+   ===================================================================== */
+const $ = (q, r) => (r || document).querySelector(q);
+const $$ = (q, r) => Array.from((r || document).querySelectorAll(q));
+const clamp = (x, a, b) => x < a ? a : x > b ? b : x;
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = x => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+const COL = {
+  ink: '#eaf1fb', dim: '#a9b9d1', mut: '#7488a8', inh: '#3ba7e0', exh: '#ef6a5e', epr: '#34d3b0',
+  amber: '#fbbf24', good: '#4ade80', crit: '#f2635a', violet: '#a78bfa',
+  line: 'rgba(148,163,184,.18)', line2: 'rgba(148,163,184,.32)',
+  N3: '#3b5bdb', N2: '#4c8fd6', N1: '#8fb8e6', REM: '#34d3b0', W: '#fbbf24',
+};
+function ctxOf(id) { const c = document.getElementById(id); const g = c.getContext('2d'); g.scale(2, 2); return g; }
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function txt(g, s, x, y, o) {
+  o = o || {}; g.font = (o.w || 500) + ' ' + (o.s || 13) + 'px ' + (o.f || 'Segoe UI, Calibri, Arial, sans-serif');
+  g.fillStyle = o.c || COL.dim; g.textAlign = o.a || 'left'; g.textBaseline = o.b || 'alphabetic'; g.fillText(s, x, y);
+}
+const fmt = (v, d) => (+v).toFixed(d === undefined ? 1 : d);
+const sevBand = ahi => ahi < 5 ? ['Normal', 'good'] : ahi < 15 ? ['Mild', 'mild'] : ahi < 30 ? ['Moderate', 'mod'] : ['Severe', 'sev'];
+
+/* ---------- global state ---------- */
+const G = {
+  scene: 1, patient: 'severe', custom: null, stage: 'N2', cpapOn: false, cpap: 10,
+  speed: 2, paused: false, tourOn: false, embed: false, capture: false,
+  relief: 3, eprOn: true,
+};
+const P = new URLSearchParams(location.search);
+const patientParams = () => Object.assign({}, OSA.PRESETS[G.patient], G.custom || {});
+
+/* ---------- stage scaling ---------- */
+function fit() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  $('#stage').style.transform = 'scale(' + s + ')';
+}
+addEventListener('resize', fit);
+
+/* ---------- scenes ---------- */
+const SCENES = {};
+function showScene(n) {
+  G.scene = n;
+  $$('.scene').forEach(el => el.classList.toggle('on', el.id === 's' + n));
+  $$('.tab').forEach(el => el.classList.toggle('on', +el.dataset.scene === n));
+  $('#adv').classList.remove('on');
+  if (SCENES[n] && SCENES[n].enter) SCENES[n].enter();
+}
+$$('.tab').forEach(b => b.addEventListener('click', () => { if (G.tourOn) Tour.stop(); showScene(+b.dataset.scene); }));
+
+/* ---------- segmented-control helper ---------- */
+function seg(id, attr, cb) {
+  const el = $(id);
+  const set = v => $$('button', el).forEach(b => b.classList.toggle('on', b.dataset[attr] === String(v)));
+  el.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; set(b.dataset[attr]); cb(b.dataset[attr]); });
+  return set;
+}
+
+/* ---------- shared patient selector (scenes 1 & 2 stay in sync) ---------- */
+let setPat1, setPat2;
+function selectPatient(k, fromUser) {
+  G.patient = k; G.custom = null;
+  setPat1(k); setPat2(k);
+  if (SCENES[1].onPatient) SCENES[1].onPatient();
+  if (SCENES[2].onPatient) SCENES[2].onPatient();
+  if (SCENES[3].onPatient) SCENES[3].onPatient();
+}
+
+/* ---------- clock ---------- */
+let lastT = performance.now();
+function tick(dt) {
+  if (G.tourOn) Tour.update(dt);
+  const s = SCENES[G.scene]; if (s && s.update) s.update(dt);
+}
+function drawAll() { const s = SCENES[G.scene]; if (s && s.draw) s.draw(); }
+function frame(now) {
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (!G.capture) { tick(dt); drawAll(); }
+  requestAnimationFrame(frame);
+}
+window.__advance = function (dt) { tick(dt); drawAll(); };      // deterministic stepping for video capture
+
+/* =====================================================================
+   The deck's model (slides 7-10): single-compartment RC lung, prescribed half-sine breath.
+     P_mus + P_dev = R*Vdot + V/C          (P_mus < 0 by the deck's sign convention)
+     expiratory effort e = -P_mus = P_dev(t) + R*|Vdot| - V/C
+     flow-triggered relief: P_dev,exp(t) = P_cpap - relief * (|Vdot| / Vdot_peak)
+     vent jet: orifice  v = Cd * sqrt(2 P / rho),  Re = rho v D / mu
+   Verified to reproduce every number on slides 8-10 (see DECK_TARGETS).
+   ===================================================================== */
+const DECK = { R: 3, C: 0.1, VT: 0.5, RR: 15, P: 10, REL: 3, IE: 1.5,
+  Cd: 0.6, rho: 1.2, D: 1e-3, mu: 1.8e-5 };
+const DECK_TARGETS = { effB: 8.48, effA: 5.48, wB: 0.41, wA: 0.29, ptpPct: -24, jetB: 24.3, jetA: 20.3, reB: 1617, reA: 1353 };
+const CMH2O = 98.0665, J_PER_CMH2O_L = 0.0980665;
+
+function deckCompute(p) {
+  const T = 60 / p.RR, Ti = T / (1 + p.IE), Te = T - Ti;
+  const qpkE = Math.PI * p.VT / (2 * Te), qpkI = Math.PI * p.VT / (2 * Ti);
+  const N = 240;
+  const cyc = [];                                             // full-cycle samples (t, q, V, Pdev, effort, phase)
+  const mk = rel => {
+    const out = { t: [], q: [], V: [], pdev: [], eff: [], pm: [], ph: [] };
+    for (let i = 0; i < N; i++) {                             // inspiration
+      const th = (i + 0.5) / N * Math.PI, t = th / Math.PI * Ti;
+      const q = qpkI * Math.sin(th), V = p.VT / 2 * (1 - Math.cos(th));
+      const pd = p.P, pm = p.R * q + V / p.C - pd;
+      out.t.push(t); out.q.push(q); out.V.push(V); out.pdev.push(pd); out.pm.push(pm); out.eff.push(-pm); out.ph.push(0);
+    }
+    for (let i = 0; i < N; i++) {                             // expiration
+      const th = (i + 0.5) / N * Math.PI, t = Ti + th / Math.PI * Te;
+      const q = -qpkE * Math.sin(th), V = p.VT / 2 * (1 + Math.cos(th));
+      const pd = p.P - rel * Math.min(1, Math.abs(q) / qpkE), pm = p.R * q + V / p.C - pd;
+      out.t.push(t); out.q.push(q); out.V.push(V); out.pdev.push(pd); out.pm.push(pm); out.eff.push(-pm); out.ph.push(1);
+    }
+    // metrics over exhalation
+    let work = 0, ptp = 0, maxE = -1e9;
+    for (let i = N; i < 2 * N; i++) {
+      const dV = p.VT / 2 * Math.sin((i - N + 0.5) / N * Math.PI) * Math.PI / N;
+      work += out.eff[i] * dV; ptp += out.eff[i] * Te / N; maxE = Math.max(maxE, out.eff[i]);
+    }
+    out.peakEff = (p.P - rel) + p.R * qpkE - p.VT / 2 / p.C;    // effort at the instant of peak expiratory flow (the deck's "peak exhalation effort")
+    out.work = work * J_PER_CMH2O_L; out.ptp = ptp; out.maxE = maxE;
+    out.pMin = p.P - rel;
+    out.jet = DECK.Cd * Math.sqrt(2 * out.pMin * CMH2O / DECK.rho);
+    out.re = DECK.rho * out.jet * DECK.D / DECK.mu;
+    return out;
+  };
+  const before = mk(0), after = mk(p.REL);
+  return { p, T, Ti, Te, qpkE, qpkI, N, before, after };
+}
+const jetV = P => DECK.Cd * Math.sqrt(2 * Math.max(P, 0) * CMH2O / DECK.rho);
+
+/* =====================================================================
+   SCENE 1 : how obstructive sleep apnea happens (live physiology)
+   ===================================================================== */
+SCENES[1] = (function () {
+  const gA = ctxOf('cAnat'), gT = ctxOf('cTrace'), gG = ctxOf('cGauge');
+  const XP = 262, W0 = 36;                                        // posterior pharyngeal wall x, open width (local px)
+  let lastDt = 1 / 60, sim = null, hist = null, acc = 0, lastRec = 0, tShow = 0, phase = 0, phaseT = 0, peakPm = 0, peakPmPrev = 0, lastBreathN = 0;
+  const parts = []; for (let i = 0; i < 170; i++) parts.push({ s: Math.random(), rho: Math.random() * 1.7 - 0.85 });
+
+  /* ---------- simulation control ---------- */
+  function build(warmSec) {
+    sim = new OSA.Sim(patientParams(), { cpap: G.cpapOn ? G.cpap : 0, relief: 0 }, { seed: 11, stageMode: 'fixed', fixedStage: G.stage });
+    hist = { t: [], flow: [], eff: [], spo2: [], co2: [], ar: [], ev: [], thr: [] }; lastRec = 0; acc = 0;
+    const n = Math.round((warmSec || 150) / 0.05);
+    for (let i = 0; i < n; i++) { sim.step(0.05); rec(); }
+  }
+  function rec() {
+    if (sim.t - lastRec < 0.1) return; lastRec = sim.t;
+    hist.t.push(sim.t); hist.flow.push(sim.q); hist.eff.push(sim.pmus); hist.spo2.push(sim.spo2); hist.co2.push(sim.paco2);
+    hist.ar.push(sim.arTimer > 0 ? 1 : 0); hist.ev.push(sim.ev ? 1 : 0); hist.thr.push(sim.p.arTh * OSA.STAGE[sim.stage].ar);
+    if (hist.t.length > 1200) for (const k in hist) hist[k].splice(0, 200);
+    if (sim.pmus > peakPm) peakPm = sim.pmus;
+    if (sim.breathN !== lastBreathN) { lastBreathN = sim.breathN; peakPmPrev = peakPm; peakPm = 0; }
+  }
+  function applyLive() {                                          // push UI settings into the running sim without resetting it
+    if (!sim) return;
+    sim.th.cpap = G.cpapOn ? G.cpap : 0; sim.fixedStage = G.stage; sim.p = patientParams();
+  }
+
+  /* ---------- geometry ---------- */
+  const bump = y => Math.min(1, Math.exp(-Math.pow((y - 235) / 34, 2)) * 0.98 + Math.exp(-Math.pow((y - 318) / 30, 2)) * 0.98);
+  function xaOf(L, flut, t) { return y => (y < 198 ? XP + W0 : XP + W0 * (1 - (1 - L) * bump(y)) + flut * Math.sin(t * 58 + y * 0.06)); }
+  const NASAL = [[494, 206], [470, 196], [400, 185], [330, 179], [298, 178], [283, 182]];
+  const nasLen = (() => { let s = 0; for (let i = 1; i < NASAL.length; i++) s += Math.hypot(NASAL[i][0] - NASAL[i - 1][0], NASAL[i][1] - NASAL[i - 1][1]); return s; })();
+  const LB = 218, LC = 42, LT = nasLen + LB + LC;
+  function partPos(p, xa) {
+    let d = p.s * LT;
+    if (d < nasLen) {
+      let i = 1, acc2 = 0;
+      for (; i < NASAL.length; i++) { const sl = Math.hypot(NASAL[i][0] - NASAL[i - 1][0], NASAL[i][1] - NASAL[i - 1][1]); if (acc2 + sl >= d) break; acc2 += sl; }
+      i = Math.min(i, NASAL.length - 1);
+      const a = NASAL[i - 1], b = NASAL[i], sl = Math.hypot(b[0] - a[0], b[1] - a[1]), f = (d - acc2) / sl;
+      const nx = -(b[1] - a[1]) / sl, ny = (b[0] - a[0]) / sl;
+      return [a[0] + (b[0] - a[0]) * f + nx * p.rho * 8, a[1] + (b[1] - a[1]) * f + ny * p.rho * 8, 0.55];
+    }
+    d -= nasLen;
+    if (d < LB) { const y = 182 + d, w = xa(y) - XP, c = XP + w / 2; return [c + p.rho * Math.max(w / 2 - 1, 0.5), y, Math.max(w / W0, 0.1)]; }
+    d -= LB; return [280 + p.rho * 10, 400 + d, 0.6];
+  }
+
+  /* ---------- drawing: anatomy ---------- */
+  function drawAnatomy(t) {
+    const g = gA, L = clamp((sim.lumen - 0.05) / 0.68, 0, 1), cp = sim.th.cpap;
+    g.clearRect(0, 0, 676, 552);
+    const aroused = sim.arTimer > 0;
+    const flutAmp = (L > 0.08 && L < 0.7 && sim.q > 0.04) ? 2.6 * smooth((0.7 - L) / 0.35) * Math.min(1, sim.q / 0.25) : 0;
+    const xa = xaOf(L, flutAmp, t), xa0 = xaOf(L, 0, t);
+    g.save(); g.translate(40, 60); g.scale(0.9, 0.9);
+
+    // chest / lungs
+    const inf = clamp(sim.x / 0.5, 0, 1.3), sc = 1 + 0.2 * inf;
+    g.fillStyle = '#12213c'; rr(g, 72, 440, 416, 120, 30); g.fill(); g.strokeStyle = '#2b4470'; g.lineWidth = 1.5; g.stroke();
+    const lung = (cx, dir) => {
+      g.beginPath(); g.ellipse(cx, 486, 64 * sc, 40 * sc, dir * 0.08, 0, 6.283);
+      const gr = g.createRadialGradient(cx, 486, 6, cx, 486, 70 * sc);
+      gr.addColorStop(0, aroused ? '#f0a9a3' : '#e58f8f'); gr.addColorStop(1, '#a24f5a'); g.fillStyle = gr; g.fill();
+      g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 1.5; g.stroke();
+    };
+    lung(214, -1); lung(346, 1);
+    g.strokeStyle = '#d8dee9'; g.lineWidth = 8; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(280, 440); g.lineTo(280, 454); g.lineTo(238, 472); g.moveTo(280, 454); g.lineTo(322, 472); g.stroke();
+    // diaphragm
+    const dz = clamp(sim.pmus / 14, 0, 1.2);
+    g.strokeStyle = '#f2c14e'; g.lineWidth = 4; g.beginPath(); g.moveTo(90, 532); g.quadraticCurveTo(280, 506 + 26 * dz, 470, 532); g.stroke();
+    if (dz > 0.05) {                                              // effort arrows (muscle pull)
+      g.fillStyle = COL.exh; g.strokeStyle = COL.exh; g.lineWidth = 3;
+      for (const ax of [170, 280, 390]) { const l = 8 + 18 * dz; g.beginPath(); g.moveTo(ax, 522); g.lineTo(ax, 522 + l); g.stroke(); g.beginPath(); g.moveTo(ax - 5, 522 + l - 2); g.lineTo(ax + 5, 522 + l - 2); g.lineTo(ax, 522 + l + 7); g.fill(); }
+    }
+
+    // head + neck silhouette
+    g.beginPath(); g.moveTo(150, 440); g.lineTo(170, 330);
+    g.bezierCurveTo(120, 290, 105, 190, 150, 120); g.bezierCurveTo(190, 55, 300, 30, 385, 60);
+    g.bezierCurveTo(430, 76, 455, 105, 470, 140); g.lineTo(520, 185); g.bezierCurveTo(528, 197, 512, 208, 496, 208);
+    g.lineTo(493, 228); g.bezierCurveTo(501, 236, 501, 244, 493, 250); g.bezierCurveTo(501, 258, 497, 268, 488, 276);
+    g.lineTo(476, 312); g.bezierCurveTo(462, 334, 410, 340, 372, 346); g.lineTo(352, 384); g.lineTo(350, 440); g.closePath();
+    const hg = g.createLinearGradient(100, 40, 500, 340); hg.addColorStop(0, '#1b2f56'); hg.addColorStop(1, '#14233f');
+    g.fillStyle = hg; g.fill(); g.strokeStyle = '#3a5a8c'; g.lineWidth = 2; g.stroke();
+
+    // spine hint
+    g.fillStyle = 'rgba(200,210,230,.10)';
+    for (let i = 0; i < 6; i++) { rr(g, 196, 190 + i * 42, 44, 32, 9); g.fill(); }
+
+    // nasal cavity lumen
+    g.beginPath(); g.moveTo(494, 197); for (const p of NASAL) g.lineTo(p[0], p[1] - 9); for (let i = NASAL.length - 1; i >= 0; i--) g.lineTo(NASAL[i][0], NASAL[i][1] + 9); g.closePath();
+    const lumCol = cp > 0 ? '#0a2c4a' : '#050d19';
+    g.fillStyle = lumCol; g.fill();
+    // hard palate
+    g.strokeStyle = '#e6d5b8'; g.lineWidth = 6; g.lineCap = 'butt'; g.beginPath(); g.moveTo(298, 198); g.lineTo(490, 216); g.stroke();
+
+    // pharynx lumen (between posterior wall and anterior tissue boundary)
+    g.beginPath(); g.moveTo(XP, 158);
+    for (let y = 158; y <= 350; y += 6) g.lineTo(xa0(y), y);
+    g.lineTo(292, 400); g.lineTo(292, 442); g.lineTo(268, 442); g.lineTo(268, 400); g.lineTo(XP, 372); g.closePath();
+    g.fillStyle = lumCol; g.fill();
+    // pressurised-air glow
+    if (cp > 0) { g.fillStyle = 'rgba(52,211,176,.10)'; g.fill(); }
+    // trachea rings
+    g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1;
+    for (let y = 408; y < 440; y += 7) { g.beginPath(); g.moveTo(268, y); g.lineTo(292, y); g.stroke(); }
+
+    // tongue
+    g.beginPath(); g.moveTo(492, 230); g.lineTo(360, 238);
+    for (let y = 262; y <= 350; y += 6) g.lineTo(xa(y), y);
+    g.lineTo(xa(350) + 6, 356); g.lineTo(400, 334); g.lineTo(452, 312); g.lineTo(488, 280); g.closePath();
+    const tg = g.createLinearGradient(330, 240, 480, 330); tg.addColorStop(0, '#b4505f'); tg.addColorStop(1, '#8f3d51');
+    g.fillStyle = tg; g.fill(); g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1.5; g.stroke();
+    // soft palate + uvula
+    g.beginPath(); g.moveTo(300, 194);
+    for (let y = 200; y <= 268; y += 6) g.lineTo(xa(y), y);
+    g.lineTo(xa(268) + 5, 276); g.lineTo(xa(268) + 20, 268);
+    for (let y = 262; y >= 206; y -= 6) g.lineTo(xa(y) + 20, y);
+    g.lineTo(330, 200); g.closePath(); g.fillStyle = '#e8998d'; g.fill(); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1.5; g.stroke();
+    // epiglottis
+    g.beginPath(); g.moveTo(xa(350) + 6, 362); g.quadraticCurveTo(xa(350) + 14, 346, xa(350) + 10, 336); g.lineTo(xa(350) + 22, 340); g.quadraticCurveTo(xa(350) + 24, 362, xa(350) + 14, 384); g.closePath();
+    g.fillStyle = '#d0727b'; g.fill();
+    // closed-mouth seam, teeth hint, nostril
+    g.strokeStyle = '#0a1424'; g.lineWidth = 2; g.beginPath(); g.moveTo(492, 250); g.lineTo(468, 254); g.stroke();
+    g.strokeStyle = '#0a1424'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(XP, 158); for (let y = 158; y <= 372; y += 10) g.lineTo(XP - 1.5, y); g.stroke();
+
+    // airflow particles (blue in, red out) ; speed follows local cross-section (continuity)
+    const q = sim.q, dts = Math.min(lastDt, 0.05) * G.speed * (G.paused ? 0 : 1), dir = q >= 0 ? 1 : -1;
+    for (const p of parts) {
+      const pos = partPos(p, xa0);
+      p.s += dir * Math.min(Math.abs(q) * 720 / Math.max(pos[2], 0.12), 900) * dts / LT;
+      if (p.s > 1) { p.s = 0; p.rho = Math.random() * 1.7 - 0.85; } else if (p.s < 0) { p.s = 1; p.rho = Math.random() * 1.7 - 0.85; }
+      if (Math.abs(q) < 0.015) continue;
+      g.globalAlpha = clamp(Math.abs(q) * 3, 0.15, 0.95);
+      g.fillStyle = q > 0 ? COL.inh : COL.exh; g.beginPath(); g.arc(pos[0], pos[1], 2.1, 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // CPAP mask + hose
+    if (cp > 0) {
+      g.fillStyle = 'rgba(52,211,176,.28)'; g.strokeStyle = COL.epr; g.lineWidth = 2.5;
+      g.beginPath(); g.moveTo(500, 186); g.quadraticCurveTo(548, 176, 552, 214); g.quadraticCurveTo(540, 240, 488, 236); g.closePath(); g.fill(); g.stroke();
+      g.lineWidth = 9; g.strokeStyle = 'rgba(160,200,225,.55)'; g.lineCap = 'round'; g.beginPath(); g.moveTo(548, 196); g.bezierCurveTo(600, 190, 610, 110, 640, 60); g.stroke();
+      // splint arrows on pharyngeal walls
+      const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+      g.strokeStyle = COL.epr; g.fillStyle = COL.epr; g.lineWidth = 2.5; g.globalAlpha = 0.55 + 0.4 * pulse;
+      for (const y of [214, 262, 318, 366]) {
+        const xl = XP - 2, xr = xa0(y) + (y > 240 && y < 350 ? 6 : 2);
+        g.beginPath(); g.moveTo(xl, y); g.lineTo(xl - 16, y); g.stroke(); g.beginPath(); g.moveTo(xl - 20, y); g.lineTo(xl - 11, y - 5); g.lineTo(xl - 11, y + 5); g.fill();
+        g.beginPath(); g.moveTo(xr, y); g.lineTo(xr + 16, y); g.stroke(); g.beginPath(); g.moveTo(xr + 20, y); g.lineTo(xr + 11, y - 5); g.lineTo(xr + 11, y + 5); g.fill();
+      }
+      g.globalAlpha = 1; g.lineCap = 'butt';
+    }
+
+    // obstruction marker
+    if (L < 0.25 && sim.stage !== 'W' && !aroused) {
+      const pl = 0.5 + 0.5 * Math.sin(t * 6), cx = XP + 4, cy = 238;
+      g.strokeStyle = COL.crit; g.lineWidth = 3; g.globalAlpha = 0.6 + 0.4 * pl;
+      g.beginPath(); g.arc(cx + 14, cy, 20 + 3 * pl, 0, 6.283); g.stroke();
+      g.beginPath(); g.moveTo(cx + 6, cy - 8); g.lineTo(cx + 22, cy + 8); g.moveTo(cx + 22, cy - 8); g.lineTo(cx + 6, cy + 8); g.stroke(); g.globalAlpha = 1;
+    }
+    // eye + zzz / alert
+    g.strokeStyle = '#cfe0f7'; g.lineWidth = 2;
+    if (aroused) { g.fillStyle = '#fff'; g.beginPath(); g.arc(446, 142, 6, 0, 6.283); g.fill(); g.fillStyle = '#0a1424'; g.beginPath(); g.arc(448, 142, 2.8, 0, 6.283); g.fill(); }
+    else { g.beginPath(); g.arc(446, 140, 7, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); }
+    g.restore();
+
+    // flow direction badge at the nose
+    const nx = 40 + 496 * 0.9, ny = 60 + 208 * 0.9;
+    if (Math.abs(q) > 0.03) {
+      const inn = q > 0; g.fillStyle = inn ? COL.inh : COL.exh; g.strokeStyle = g.fillStyle; g.lineWidth = 4;
+      const ln = 16 + 34 * Math.min(1, Math.abs(q) / 0.6), x0 = nx + 40 + (inn ? ln : 0), x1 = nx + 40 + (inn ? 0 : ln);
+      g.beginPath(); g.moveTo(x0, ny + 4); g.lineTo(x1 + (inn ? 8 : -8), ny + 4); g.stroke();
+      g.beginPath(); g.moveTo(x1, ny + 4); g.lineTo(x1 + (inn ? 12 : -12), ny - 5); g.lineTo(x1 + (inn ? 12 : -12), ny + 13); g.fill();
+      txt(g, (inn ? 'in ' : 'out ') + fmt(Math.abs(q), 2) + ' L/s', nx + 40, ny + 30, { c: inn ? COL.inh : COL.exh, w: 700, s: 13 });
+    } else if (sim.lumen < 0.2 && sim.stage !== 'W' && sim.arTimer <= 0) {
+      txt(g, 'NO AIRFLOW', nx + 22, ny + 10, { c: COL.crit, w: 800, s: 14 });
+    }
+    // labels (horizontal leaders)
+    const lab = (s, x, y, tx, ty, al) => { g.strokeStyle = 'rgba(169,185,209,.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(al === 'right' ? x - 4 : x + 3, y - 4); g.lineTo(tx, ty); g.stroke(); txt(g, s, x, y, { s: 13, c: COL.dim, a: al === 'right' ? 'right' : 'left' }); };
+    const cv = (lx, ly) => [40 + lx * 0.9, 60 + ly * 0.9];
+    let q1;
+    q1 = cv(XP + 8, 250); lab('Pharynx · collapse site', 26, q1[1] + 4, q1[0], q1[1]);
+    q1 = cv(XP + 10, 366); lab('Epiglottis', 26, q1[1] + 4, q1[0] + 8, q1[1]);
+    q1 = cv(268, 432); lab('Trachea', 26, q1[1] + 4, q1[0], q1[1]);
+    q1 = cv(440, 190); lab('Nasal cavity', 330, 178, q1[0], q1[1] - 6);
+    q1 = cv(318, 236); lab('Soft palate', 556, 302, q1[0] + 6, q1[1]);
+    q1 = cv(430, 300); lab('Tongue', 556, 348, q1[0] + 16, q1[1]);
+    txt(g, 'Lungs', 100, 508, { s: 13, c: COL.dim }); txt(g, 'Diaphragm', 396, 546, { s: 13, c: '#f2c14e' });
+    if (cp > 0) txt(g, 'CPAP ' + fmt(cp, 1) + ' cmH₂O', 536, 150, { c: COL.epr, w: 700, s: 14 });
+    // Zzz
+    if (!aroused && sim.stage !== 'W') { const zz = (t * 0.6) % 1; g.globalAlpha = 1 - zz; txt(g, 'z', 398 + zz * 20, 152 - zz * 22, { s: 20, c: COL.amber, w: 800 }); txt(g, 'Z', 418 + zz * 24, 136 - zz * 26, { s: 26, c: COL.amber, w: 800 }); g.globalAlpha = 1; }
+    else if (aroused) txt(g, 'AWAKE!', 392, 136, { s: 22, c: COL.amber, w: 800 });
+  }
+
+  /* ---------- drawing: sleep-lab strip ---------- */
+  function drawTrace() {
+    const g = gT, W = 548, H = 340, x0 = 90, x1 = 538, win = 90;
+    g.clearRect(0, 0, W, H);
+    const n = hist.t.length; if (n < 2) return;
+    const tN = hist.t[n - 1], px = (x1 - x0) / win, X = t => x1 - (tN - t) * px;
+    const chans = [
+      { k: 'flow', y: 34, h: 76, lo: -0.9, hi: 0.9, name: 'Airflow', unit: 'L/s', c: COL.inh, mid: true },
+      { k: 'eff', y: 116, h: 64, lo: 0, hi: 26, name: 'Effort', unit: 'cmH₂O', c: COL.exh },
+      { k: 'spo2', y: 186, h: 66, lo: 68, hi: 100, name: 'SpO₂', unit: '%', c: COL.amber },
+      { k: 'co2', y: 258, h: 40, lo: 38, hi: 54, name: 'PaCO₂', unit: 'mmHg', c: COL.violet },
+    ];
+    // event shading (obstructive events) + arousals
+    let i0 = 0; while (i0 < n && X(hist.t[i0]) < x0) i0++;
+    const runs = (key) => { const r = []; let s = -1; for (let i = i0; i < n; i++) { if (hist[key][i] && s < 0) s = i; if ((!hist[key][i] || i === n - 1) && s >= 0) { r.push([s, i]); s = -1; } } return r; };
+    for (const [a, b] of runs('ev')) {
+      const xa = Math.max(x0, X(hist.t[a])), xb = X(hist.t[b]); g.fillStyle = 'rgba(242,99,90,.13)'; g.fillRect(xa, 30, xb - xa, 268);
+      if (xb - xa > 46) txt(g, fmt(hist.t[b] - hist.t[a], 0) + ' s event', xa + 4, 46, { c: '#ff9b93', w: 700, s: 12 });
+    }
+    for (const c of chans) {
+      g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(x0, c.y, x1 - x0, c.h);
+      txt(g, c.name, 12, c.y + 16, { w: 700, s: 13, c: COL.ink }); txt(g, c.unit, 12, c.y + 32, { s: 11.5, c: COL.mut });
+      const Y = v => c.y + c.h - (clamp(v, c.lo, c.hi) - c.lo) / (c.hi - c.lo) * c.h;
+      if (c.mid) { g.strokeStyle = 'rgba(148,163,184,.25)'; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(x0, Y(0)); g.lineTo(x1, Y(0)); g.stroke(); g.setLineDash([]); }
+      if (c.k === 'spo2') { g.strokeStyle = 'rgba(242,99,90,.6)'; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(x0, Y(90)); g.lineTo(x1, Y(90)); g.stroke(); g.setLineDash([]); txt(g, '90', x0 - 4, Y(90) + 4, { s: 11, a: 'right', c: '#ff9b93' }); }
+      if (c.k === 'eff') { const thr = hist.thr[n - 1]; g.strokeStyle = 'rgba(251,191,36,.6)'; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(x0, Y(thr)); g.lineTo(x1, Y(thr)); g.stroke(); g.setLineDash([]); txt(g, 'arousal threshold', x0 + 4, Y(thr) - 3, { s: 11, c: COL.amber }); }
+      g.strokeStyle = c.c; g.lineWidth = 1.8; g.lineJoin = 'round'; g.beginPath();
+      let first = true; for (let i = i0; i < n; i++) { const xx = X(hist.t[i]), yy = Y(hist[c.k][i]); if (first) { g.moveTo(xx, yy); first = false; } else g.lineTo(xx, yy); } g.stroke();
+    }
+    // arousal strip
+    g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(x0, 304, x1 - x0, 16); txt(g, 'Brain (EEG)', 12, 317, { w: 700, s: 13, c: COL.ink });
+    for (const [a, b] of runs('ar')) { const xa = Math.max(x0, X(hist.t[a])), xb = X(hist.t[b]); g.fillStyle = COL.amber; g.fillRect(xa, 304, Math.max(3, xb - xa), 16); if (xb - xa > 40) txt(g, 'AROUSAL', xa + 4, 316, { s: 11, w: 800, c: '#1a1200' }); }
+    // axis
+    g.strokeStyle = 'rgba(148,163,184,.25)'; g.lineWidth = 1;
+    for (let s = 0; s <= win; s += 15) { const xx = x1 - s * px; g.beginPath(); g.moveTo(xx, 322); g.lineTo(xx, 327); g.stroke(); txt(g, s === 0 ? 'now' : '−' + s + ' s', xx, 338, { s: 11, a: s === 0 ? 'right' : (s === win ? 'left' : 'center'), c: COL.mut }); }
+  }
+
+  /* ---------- drawing: pressure ladder ---------- */
+  function drawGauge() {
+    const g = gG; g.clearRect(0, 0, 548, 200);
+    const lo = -12, hi = 14, y0 = 46, y1 = 176, Y = v => y1 - (clamp(v, lo, hi) - lo) / (hi - lo) * (y1 - y0);
+    const pc = sim.pcritEff, ps = sim.psite, pn = sim.pn, xL = 44, xR = 150;
+    // collapse zone
+    const grd = g.createLinearGradient(0, Y(pc), 0, y1); grd.addColorStop(0, 'rgba(242,99,90,.32)'); grd.addColorStop(1, 'rgba(242,99,90,.06)');
+    g.fillStyle = grd; g.fillRect(xL, Y(pc), xR - xL, y1 - Y(pc));
+    g.fillStyle = 'rgba(52,211,176,.07)'; g.fillRect(xL, y0, xR - xL, Y(pc) - y0);
+    g.strokeStyle = 'rgba(148,163,184,.4)'; g.lineWidth = 1; g.strokeRect(xL, y0, xR - xL, y1 - y0);
+    for (const v of [-10, -5, 0, 5, 10]) { g.strokeStyle = v === 0 ? 'rgba(234,241,251,.35)' : 'rgba(148,163,184,.14)'; g.beginPath(); g.moveTo(xL, Y(v)); g.lineTo(xR, Y(v)); g.stroke(); txt(g, String(v), xL - 6, Y(v) + 4, { s: 11.5, a: 'right', c: COL.mut }); }
+    txt(g, 'cmH₂O', 8, 40, { s: 11.5, c: COL.mut });
+    // Pcrit line
+    g.strokeStyle = COL.crit; g.lineWidth = 3; g.beginPath(); g.moveTo(xL - 2, Y(pc)); g.lineTo(xR + 2, Y(pc)); g.stroke();
+    txt(g, 'Pcrit ' + fmt(pc, 1), xR + 6, Y(pc) + 4, { s: 12.5, c: '#ff9b93', w: 700 });
+    // mask (upstream) pressure
+    if (sim.th.cpap > 0) { g.strokeStyle = COL.epr; g.lineWidth = 2.5; g.setLineDash([5, 3]); g.beginPath(); g.moveTo(xL, Y(pn)); g.lineTo(xR, Y(pn)); g.stroke(); g.setLineDash([]); txt(g, 'CPAP ' + fmt(pn, 1), xR + 6, Y(pn) - (Math.abs(Y(pn) - Y(pc)) < 14 ? 9 : -4), { s: 12.5, c: COL.epr, w: 700 }); }
+    // airway pressure at the collapse site
+    const open = ps > pc + 0.4;
+    g.fillStyle = open ? COL.inh : COL.crit; g.beginPath(); g.arc((xL + xR) / 2, Y(ps), 7, 0, 6.283); g.fill();
+    g.strokeStyle = open ? COL.inh : COL.crit; g.lineWidth = 2; g.beginPath(); g.moveTo((xL + xR) / 2, Y(ps) - 7); g.lineTo((xL + xR) / 2, Y(Math.max(ps, pc))); g.stroke();
+    txt(g, 'airway pressure', (xL + xR) / 2, y1 + 15, { s: 12, a: 'center', c: open ? COL.inh : '#ff9b93', w: 700 });
+  }
+
+  /* ---------- DOM readouts ---------- */
+  let lastTxt = {};
+  function setHTML(id, h) { if (lastTxt[id] !== h) { lastTxt[id] = h; $('#' + id).innerHTML = h; } }
+  function readouts() {
+    const sp = sim.spo2, col = sp < 88 ? COL.crit : sp < 92 ? COL.amber : COL.ink;
+    $('#tSpo2').style.color = col; setHTML('tSpo2', fmt(sp, 0) + '<span class="u">%</span>');
+    setHTML('tCo2', fmt(sim.paco2, 0) + '<span class="u">mmHg</span>');
+    setHTML('tEff', fmt(Math.max(peakPm, peakPmPrev), 0) + '<span class="u">cmH₂O</span>');
+    const m = sim.summary(); const ev = sim.nApnea + sim.nHypo;
+    setHTML('tEv', ev + '<span class="u">/ <span id="tAhi">' + fmt(m.ahi, 0) + '</span> per h</span>');
+    const ps = sim.psite, pc = sim.pcritEff;
+    let msg;
+    if (sim.arTimer > 0) msg = 'Arousal: the brain wakes, dilator muscles switch on and Pcrit falls, so the airway reopens.';
+    else if (sim.lumen < 0.2) msg = 'Airway pressure is below Pcrit: the walls stick together. The chest pulls harder but no air moves.';
+    else if (sim.lumen < 0.5) msg = 'Flow-limited: airway pressure is close to Pcrit. Pulling harder cannot add flow. This is the snore.';
+    else if (sim.th.cpap > 0) msg = 'CPAP holds airway pressure above Pcrit, a pneumatic splint. The airway stays open through every breath.';
+    else msg = 'Airway pressure stays above Pcrit (margin ' + fmt(ps - pc, 1) + ' cmH₂O). The airway stays open.';
+    setHTML('gnote', msg);
+  }
+  function phaseNow() {
+    if (sim.arTimer > 0) return 3;
+    if (sim.lumen < 0.22) return 2;
+    if (sim.sinceAr < 14 && sim.u > 1.5) return 4;
+    if (sim.lumen < 0.5) return 1;
+    return 0;
+  }
+  function stepper() {
+    const want = phaseNow();
+    if (want !== phase) { phaseT += 1; if (phaseT > 6 || want === 3) { phase = want; phaseT = 0; } } else phaseT = 0;
+    $$('#stepper .step').forEach((el, i) => { el.classList.toggle('on', i === phase); el.classList.toggle('bad', i === phase && (i === 2)); el.classList.toggle('ok', i === phase && (i === 0 || i === 4)); });
+  }
+
+  /* ---------- controls ---------- */
+  function syncAdv() {
+    const p = patientParams();
+    $('#aPc').value = p.pcrit; $('#aGd').value = p.gDil; $('#aAr').value = p.arTh; $('#aLg').value = p.lg;
+    $('#aPcV').textContent = fmt(p.pcrit, 1) + ' cmH₂O'; $('#aGdV').textContent = fmt(p.gDil, 1); $('#aArV').textContent = fmt(p.arTh, 0) + ' cmH₂O'; $('#aLgV').textContent = fmt(p.lg, 2);
+  }
+  function cpapUI() { $('#cpapT1').textContent = G.cpapOn ? 'On' : 'Off'; $('#cpapT1').classList.toggle('on', G.cpapOn); $('#cpapV1').textContent = fmt(G.cpap, 1) + ' cmH₂O'; $('#cpapR1').value = G.cpap; }
+  setPat1 = seg('#pat1', 'p', k => selectPatient(k, true));
+  seg('#stg1', 's', v => { G.stage = v; applyLive(); });
+  seg('#spd1', 'v', v => { G.speed = +v; });
+  $('#cpapT1').addEventListener('click', () => { G.cpapOn = !G.cpapOn; cpapUI(); applyLive(); });
+  $('#cpapR1').addEventListener('input', e => { G.cpap = +e.target.value; if (!G.cpapOn) G.cpapOn = true; cpapUI(); applyLive(); });
+  $('#pauseT').addEventListener('click', () => { G.paused = !G.paused; $('#pauseT').textContent = G.paused ? '▶ Play' : '❚❚ Pause'; });
+  $('#advT').addEventListener('click', () => { $('#adv').classList.toggle('on'); syncAdv(); });
+  [['aPc', 'pcrit'], ['aGd', 'gDil'], ['aAr', 'arTh'], ['aLg', 'lg']].forEach(([id, key]) => $('#' + id).addEventListener('input', e => {
+    G.custom = Object.assign(G.custom || {}, { [key]: +e.target.value }); applyLive(); syncAdv(); $$('#pat1 button').forEach(b => b.classList.remove('on')); $$('#pat2 button').forEach(b => b.classList.remove('on'));
+  }));
+
+  return {
+    enter() { if (!sim) build(150); cpapUI(); syncAdv(); },
+    onPatient() { build(150); syncAdv(); },
+    reset() { build(150); },
+    applyLive, cpapUI,
+    get sim() { return sim; },
+    update(dt) {
+      if (!sim) build(150);
+      tShow += dt; lastDt = dt;
+      if (!G.paused) { acc += dt * G.speed; let n = 0; while (acc >= 0.05 && n++ < 400) { sim.step(0.05); rec(); acc -= 0.05; } }
+    },
+    draw() { if (!sim) return; drawAnatomy(tShow); drawTrace(); drawGauge(); readouts(); stepper(); },
+  };
+})();
+
+/* =====================================================================
+   SCENE 2 : what OSA does to a night (same physiology model, 8 h, untreated vs CPAP)
+   ===================================================================== */
+SCENES[2] = (function () {
+  const gA = ctxOf('cNA'), gB = ctxOf('cNB'), gE = ctxOf('cEv');
+  const NIGHT = 28800, NC = 800, SPC = NIGHT / NC;
+  const CODE = { W: 0, REM: 1, N1: 2, N2: 3, N3: 4 }, ROWS = ['Wake', 'REM', 'N1', 'N2', 'N3'], RCOL = [COL.W, COL.REM, COL.N1, COL.N2, COL.N3];
+  let runs = null, ph = 0, playing = true, rate = 1, dirty = true, debounce = 0, evAvg = null;
+
+  /* ---------- run construction ---------- */
+  function buildRun(cpap) {
+    const sim = OSA.runNight(patientParams(), { cpap: cpap, relief: 0 }, 3, 8);
+    const s = sim.series, N = s.t.length, r = { sim, s, N, ev: sim.events, ar: sim.arTimes, odi: sim.odi.times, sum: sim.summary(), cpap };
+    r.code = new Uint8Array(N); r.cTST = new Float32Array(N + 1); r.cN3 = new Float32Array(N + 1); r.cREM = new Float32Array(N + 1); r.cT90 = new Float32Array(N + 1); r.cMin = new Float32Array(N + 1);
+    let m = 100;
+    for (let i = 0; i < N; i++) {
+      const c = CODE[s.stage[i]]; r.code[i] = c; const sl = c !== 0;
+      r.cTST[i + 1] = r.cTST[i] + (sl ? 1 : 0); r.cN3[i + 1] = r.cN3[i] + (c === 4 ? 1 : 0); r.cREM[i + 1] = r.cREM[i] + (c === 1 ? 1 : 0);
+      r.cT90[i + 1] = r.cT90[i] + (sl && s.spo2[i] < 90 ? 1 : 0); if (sl && s.spo2[i] < m) m = s.spo2[i]; r.cMin[i + 1] = m;
+    }
+    // per-column summaries for drawing
+    r.colStage = new Uint8Array(NC); r.colMin = new Float32Array(NC); r.colMean = new Float32Array(NC);
+    for (let c = 0; c < NC; c++) {
+      const a = Math.floor(c * SPC), b = Math.min(N, Math.floor((c + 1) * SPC)), cnt = [0, 0, 0, 0, 0]; let mn = 100, sum = 0;
+      for (let i = a; i < b; i++) { cnt[r.code[i]]++; if (s.spo2[i] < mn) mn = s.spo2[i]; sum += s.spo2[i]; }
+      let best = 3; for (let k = 0; k < 5; k++) if (cnt[k] > cnt[best]) best = k;
+      r.colStage[c] = best; r.colMin[c] = mn; r.colMean[c] = sum / Math.max(1, b - a);
+    }
+    return r;
+  }
+  function rebuild() {
+    runs = { u: buildRun(0), t: buildRun(G.cpap) }; evAvg = eventAverage(runs.u); dirty = false;
+  }
+  function metricsAt(r, t) {
+    const i = clamp(Math.floor(t), 1, r.N), tst = Math.max(r.cTST[i], 1), h = tst / 3600;
+    let na = 0, nh = 0; for (const e of r.ev) if (e.t1 <= t) { if (e.type === 'apnea') na++; else nh++; }
+    let od = 0; for (const x of r.odi) if (x <= t) od++; let ar = 0; for (const x of r.ar) if (x <= t) ar++;
+    return { ahi: (na + nh) / h, odi: od / h, min: r.cMin[i], t90: 100 * r.cT90[i] / tst, ari: ar / h, n3: 100 * r.cN3[i] / tst, rem: 100 * r.cREM[i] / tst, tst: tst / 3600 };
+  }
+  function eventAverage(r) {
+    const pre = 45, post = 45, n = pre + post + 1, out = { spo2: new Float32Array(n), hr: new Float32Array(n), sbp: new Float32Array(n), n: 0 };
+    const evs = r.ev.filter(e => e.dur > 14).slice(0, 250), idx = evs.map(e => Math.floor(e.t1));
+    out.avgDur = evs.length ? evs.reduce((s, e) => s + e.dur, 0) / evs.length : 30;
+    const use = idx.length ? idx : [4000, 9000, 15000, 21000];
+    for (const t0 of use) { if (t0 - pre < 0 || t0 + post >= r.N) continue; for (let k = 0; k < n; k++) { const i = t0 - pre + k; out.spo2[k] += r.s.spo2[i]; out.hr[k] += r.s.hr[i]; out.sbp[k] += r.s.sbp[i]; } out.n++; }
+    for (let k = 0; k < n; k++) { out.spo2[k] /= Math.max(1, out.n); out.hr[k] /= Math.max(1, out.n); out.sbp[k] /= Math.max(1, out.n); }
+    out.hasEv = idx.length > 0; out.pre = pre; out.post = post; return out;
+  }
+
+  /* ---------- drawing ---------- */
+  const X0 = 78, X1 = 872, XS = (X1 - X0) / NIGHT;
+  function stripBase(g, title, sub, col, sum, cpapLbl) {
+    g.clearRect(0, 0, 888, 250);
+    txt(g, title, 16, 22, { w: 800, s: 13.5, c: col });
+    txt(g, sub, 16 + g.measureText(title).width + 10, 22, { w: 500, s: 13, c: COL.dim });
+    const [nm, k] = sevBand(sum.ahi);
+    const bx = 872, txtS = 'AHI ' + fmt(sum.ahi, 0) + ' · ' + nm; g.font = '700 13px Segoe UI, Calibri, Arial';
+    const bw = g.measureText(txtS).width + 20; g.fillStyle = { good: 'rgba(74,222,128,.18)', mild: 'rgba(251,191,36,.2)', mod: 'rgba(249,146,60,.22)', sev: 'rgba(242,99,90,.25)' }[k];
+    rr(g, bx - bw, 7, bw, 22, 11); g.fill(); txt(g, txtS, bx - bw / 2, 23, { w: 700, s: 13, a: 'center', c: { good: '#7ef0a6', mild: '#fcd34d', mod: '#fdba74', sev: '#ff9b93' }[k] });
+    // hypnogram frame
+    const hy0 = 36, rh = 18;
+    for (let k = 0; k < 5; k++) { txt(g, ROWS[k], 66, hy0 + k * rh + 13, { s: 12, a: 'right', c: COL.mut }); g.fillStyle = k % 2 ? 'rgba(255,255,255,.02)' : 'rgba(255,255,255,.045)'; g.fillRect(X0, hy0 + k * rh, X1 - X0, rh); }
+    // hour ticks
+    g.strokeStyle = 'rgba(148,163,184,.16)'; g.lineWidth = 1;
+    for (let h = 0; h <= 8; h++) { const x = X0 + h * 3600 * XS; g.beginPath(); g.moveTo(x, hy0); g.lineTo(x, 228); g.stroke(); txt(g, ((23 + h) % 24 < 10 ? '0' : '') + ((23 + h) % 24) + ':00', x, 243, { s: 11.5, a: h === 0 ? 'left' : h === 8 ? 'right' : 'center', c: COL.mut }); }
+    txt(g, 'Events', 66, 144, { s: 12, a: 'right', c: COL.mut }); txt(g, 'SpO₂ %', 66, 176, { s: 12, a: 'right', c: COL.mut });
+  }
+  function stripData(g, r, t) {
+    const hy0 = 36, rh = 18, cEnd = Math.min(NC, Math.floor(t / SPC));
+    // hypnogram
+    for (let c = 0; c < cEnd; c++) {
+      const st = r.colStage[c], y = hy0 + st * rh; g.fillStyle = RCOL[st]; g.fillRect(X0 + c * (X1 - X0) / NC, y + 3, Math.max(1, (X1 - X0) / NC + .4), rh - 6);
+      if (c > 0 && r.colStage[c - 1] !== st) { const y0 = hy0 + r.colStage[c - 1] * rh + rh / 2; g.fillStyle = 'rgba(200,215,240,.45)'; g.fillRect(X0 + c * (X1 - X0) / NC, Math.min(y, y0) + rh / 2, 1, Math.abs(y - y0)); }
+    }
+    // events
+    g.lineWidth = 2;
+    for (const e of r.ev) { if (e.t1 > t) continue; const x = X0 + e.t0 * XS, w = Math.max(1.6, (e.t1 - e.t0) * XS); g.fillStyle = e.type === 'apnea' ? COL.crit : COL.amber; g.fillRect(x, e.type === 'apnea' ? 130 : 136, w, e.type === 'apnea' ? 18 : 12); }
+    // SpO2 (per-column minimum shows the dips)
+    const sy = v => 224 - (clamp(v, 70, 100) - 70) / 30 * 62;
+    g.strokeStyle = 'rgba(242,99,90,.6)'; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(X0, sy(90)); g.lineTo(X1, sy(90)); g.stroke(); g.setLineDash([]); txt(g, '90', X0 - 6, sy(90) + 4, { s: 11, a: 'right', c: '#ff9b93' });
+    txt(g, '100', X0 - 6, sy(100) + 4, { s: 11, a: 'right', c: COL.mut }); txt(g, '70', X0 - 6, sy(70) + 4, { s: 11, a: 'right', c: COL.mut });
+    g.lineWidth = 1.6; g.lineJoin = 'round';
+    for (let c = 1; c < cEnd; c++) {
+      const x = X0 + c * (X1 - X0) / NC, xp = X0 + (c - 1) * (X1 - X0) / NC, lowv = r.colMin[c];
+      g.strokeStyle = lowv < 90 ? COL.crit : COL.amber; g.beginPath(); g.moveTo(xp, sy(r.colMin[c - 1])); g.lineTo(x, sy(lowv)); g.stroke();
+    }
+    g.fillStyle = 'rgba(251,191,36,.10)'; g.beginPath(); g.moveTo(X0, 224); for (let c = 0; c < cEnd; c++) g.lineTo(X0 + c * (X1 - X0) / NC, sy(r.colMin[c])); g.lineTo(X0 + (cEnd - 1) * (X1 - X0) / NC, 224); g.closePath(); g.fill();
+    // playhead
+    if (t < NIGHT - 1) { const x = X0 + t * XS; g.strokeStyle = COL.ink; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, 34); g.lineTo(x, 236); g.stroke(); }
+  }
+  function drawEv() {
+    const g = gE; g.clearRect(0, 0, 436, 136); const a = evAvg; if (!a) return;
+    txt(g, 'WHAT ONE EVENT DOES · untreated night, averaged', 14, 22, { w: 700, s: 12, c: COL.dim });
+    const chans = [['SpO₂ %', a.spo2, COL.amber, 0], ['Heart rate', a.hr, COL.violet, 1], ['Systolic BP', a.sbp, COL.exh, 2]];
+    const n = a.spo2.length;
+    chans.forEach(([nm, arr, col, i]) => {
+      const x0 = 14 + i * 140, w = 124, y0 = 34, h = 56; let mn = 1e9, mx = -1e9; for (const v of arr) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+      const pad = Math.max(1, (mx - mn) * 0.12); mn -= pad; mx += pad; if (mx - mn < 4) { mx += 2; mn -= 2; }
+      g.fillStyle = 'rgba(255,255,255,.04)'; g.fillRect(x0, y0, w, h);
+      const ex1 = x0 + a.pre / (n - 1) * w, exw = Math.min(a.avgDur, a.pre) / (n - 1) * w; g.fillStyle = 'rgba(242,99,90,.14)'; g.fillRect(ex1 - exw, y0, exw, h); g.strokeStyle = 'rgba(251,191,36,.8)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(ex1, y0); g.lineTo(ex1, y0 + h); g.stroke();
+      g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); for (let k = 0; k < n; k++) { const x = x0 + k / (n - 1) * w, y = y0 + h - (arr[k] - mn) / (mx - mn) * h; k ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+      txt(g, nm, x0, y0 + h + 15, { w: 700, s: 12.5, c: col }); txt(g, fmt(Math.min.apply(null, arr), 0) + '–' + fmt(Math.max.apply(null, arr), 0), x0 + w, y0 + h + 15, { s: 12, a: 'right', c: COL.dim });
+    });
+    txt(g, a.hasEv ? 'shaded = airway obstructed · line = arousal (−45 s … +45 s)' : 'No events: values stay steady all night', 14, 128, { s: 11.5, c: COL.mut });
+  }
+
+  /* ---------- report table ---------- */
+  let lastRep = '';
+  function cls(v, a, b, c) { return v < a ? 'c-good' : v < b ? 'c-mild' : v < c ? 'c-mod' : 'c-sev'; }
+  function reportHTML(mu, mt, done) {
+    const row = (nm, fu, ft, f) => '<tr><td>' + nm + '</td><td class="' + fu + '">' + f[0] + '</td><td class="' + ft + '">' + f[1] + '</td></tr>';
+    const good = (v, lo, hi) => v >= lo ? 'c-good' : v >= hi ? 'c-mild' : 'c-sev';
+    const [nu, ku] = sevBand(mu.ahi), [nt, kt] = sevBand(mt.ahi);
+    let h = '<tr><th></th><th>Untreated</th><th style="color:var(--epr)">CPAP ' + fmt(G.cpap, 1) + '</th></tr>';
+    h += row('AHI · events / h', cls(mu.ahi, 5, 15, 30), cls(mt.ahi, 5, 15, 30), [fmt(mu.ahi, 1), fmt(mt.ahi, 1)]);
+    h += '<tr><td>Severity</td><td><span class="badge b-' + ku + '">' + nu + '</span></td><td><span class="badge b-' + kt + '">' + nt + '</span></td></tr>';
+    h += row('ODI · 3% dips / h', cls(mu.odi, 5, 15, 30), cls(mt.odi, 5, 15, 30), [fmt(mu.odi, 1), fmt(mt.odi, 1)]);
+    h += row('Lowest SpO₂', good(mu.min, 92, 88), good(mt.min, 92, 88), [fmt(mu.min, 0) + '%', fmt(mt.min, 0) + '%']);
+    h += row('Time below 90%', cls(mu.t90, 1, 5, 10), cls(mt.t90, 1, 5, 10), [fmt(mu.t90, 1) + '%', fmt(mt.t90, 1) + '%']);
+    h += row('Arousals / h', cls(mu.ari, 15, 25, 40), cls(mt.ari, 15, 25, 40), [fmt(mu.ari, 0), fmt(mt.ari, 0)]);
+    h += row('Deep sleep (N3)', good(mu.n3, 10, 4), good(mt.n3, 10, 4), [fmt(mu.n3, 0) + '%', fmt(mt.n3, 0) + '%']);
+    h += row('REM sleep', good(mu.rem, 15, 8), good(mt.rem, 15, 8), [fmt(mu.rem, 0) + '%', fmt(mt.rem, 0) + '%']);
+    h += row('Sleep time', 'c-good', 'c-good', [fmt(mu.tst, 1) + ' h', fmt(mt.tst, 1) + ' h']);
+    return h;
+  }
+  function conseqHTML() {
+    const s = runs.u.sum;
+    if (s.ahi < 5) return '<div style="color:var(--good)">No sleep-disordered breathing.</div><div style="margin-top:4px">Oxygen, sleep stages and blood pressure stay normal all night.</div>';
+    const chips = ['High blood pressure', 'Atrial fibrillation', 'Stroke', 'Daytime sleepiness', 'Drowsy-driving crashes'].map(x => '<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 9px;border:1px solid var(--line2);border-radius:999px;color:var(--ink);font-size:12.5px">' + x + '</span>').join('');
+    return chips + '<div class="note" style="margin-top:5px;line-height:1.3">Associations from cohort studies. ~936 million adults (30–69 y) worldwide have mild-to-severe OSA (Benjafield 2019).</div>';
+  }
+
+  /* ---------- lifecycle ---------- */
+  function restart() { ph = 0; playing = true; $('#replay').textContent = '↻ Replay night'; }
+  setPat2 = seg('#pat2', 'p', k => selectPatient(k, true));
+  seg('#spd2', 'v', v => { rate = +v; });
+  $('#replay').addEventListener('click', () => { if (dirty) rebuild(); restart(); });
+  $('#cpapR2').addEventListener('input', e => { G.cpap = +e.target.value; $('#cpapV2').textContent = fmt(G.cpap, 1) + ' cmH₂O'; $('#cpapR1').value = G.cpap; clearTimeout(debounce); debounce = setTimeout(() => { rebuild(); SCENES[1].cpapUI && SCENES[1].cpapUI(); SCENES[1].applyLive && SCENES[1].applyLive(); }, 150); });
+
+  return {
+    enter() { $('#cpapR2').value = G.cpap; $('#cpapV2').textContent = fmt(G.cpap, 1) + ' cmH₂O'; if (dirty || !runs) rebuild(); restart(); lastRep = ''; $('#consList').innerHTML = conseqHTML(); },
+    onPatient() { dirty = true; if (G.scene === 2) { rebuild(); restart(); $('#consList').innerHTML = conseqHTML(); } },
+    get ready() { return !!runs; },
+    seek(t) { if (dirty || !runs) rebuild(); ph = t; playing = t < NIGHT; },
+    update(dt) { if (playing && !G.paused) { ph += dt * 1440 * rate; if (ph >= NIGHT) { ph = NIGHT; playing = false; $('#replay').textContent = '↻ Replay night'; } } },
+    draw() {
+      if (!runs) return; const pn = patientParams().name || 'Custom patient';
+      stripBase(gA, 'UNTREATED', pn + ' · no therapy', COL.crit, runs.u.sum); stripData(gA, runs.u, ph);
+      stripBase(gB, 'WITH CPAP ' + fmt(G.cpap, 1) + ' cmH₂O', pn + ' · therapy on', COL.epr, runs.t.sum); stripData(gB, runs.t, ph);
+      drawEv();
+      const mu = metricsAt(runs.u, ph), mt = metricsAt(runs.t, ph); const h = reportHTML(mu, mt);
+      if (h !== lastRep) { lastRep = h; $('#repTable').innerHTML = h; }
+      const hh = Math.floor(ph / 3600), mm = Math.floor(ph / 60) % 60; $('#repT').textContent = '· up to ' + ((23 + hh) % 24 < 10 ? '0' : '') + ((23 + hh) % 24) + ':' + (mm < 10 ? '0' : '') + mm;
+    },
+  };
+})();
+
+/* =====================================================================
+   SCENE 3 : the flow-triggered expiratory relief valve (deck model, live)
+   ===================================================================== */
+SCENES[3] = (function () {
+  const gD = ctxOf('cDev'), gW = ctxOf('cWav'), gL = ctxOf('cLoop'), gM = ctxOf('cMet'), gS = ctxOf('cSwp');
+  const D = Object.assign({}, DECK);            // live parameters (R, C, VT, RR, P, REL)
+  let dk = null, tb = 0, lastIns = null, pathP = [], jetP = [];
+  for (let i = 0; i < 90; i++) pathP.push({ s: Math.random(), o: (Math.random() - .5) * 2 });
+  for (let i = 0; i < 46; i++) jetP.push({ a: Math.random(), x: (Math.random() - .5) });
+  const relEff = () => G.eprOn ? D.REL : 0;
+  function recompute() {
+    const p = Object.assign({}, D, { REL: relEff() }); dk = deckCompute(p);
+    if (tb > dk.T) tb = tb % dk.T;
+  }
+  const isDefault = () => G.eprOn && Math.abs(D.R - 3) < 1e-9 && Math.abs(D.C - 0.1) < 1e-9 && Math.abs(D.VT - 0.5) < 1e-9 && D.RR === 15 && Math.abs(D.P - 10) < 1e-9 && Math.abs(D.REL - 3) < 1e-9;
+
+  /* analytic state at time tb within the breath */
+  function stateAt(t) {
+    const d = dk, p = d.p;
+    if (t < d.Ti) { const th = Math.PI * t / d.Ti; const q = d.qpkI * Math.sin(th); return { insp: true, th, q, pdev: p.P, V: p.VT / 2 * (1 - Math.cos(th)), rel: 0 }; }
+    const th = Math.PI * (t - d.Ti) / d.Te, q = -d.qpkE * Math.sin(th), rel = p.REL * Math.abs(q) / d.qpkE;
+    return { insp: false, th, q, pdev: p.P - rel, V: p.VT / 2 * (1 + Math.cos(th)), rel };
+  }
+
+  /* ---------- device schematic ---------- */
+  const PA = [[26, 146], [120, 146], [214, 146], [318, 146], [420, 146], [468, 146]];
+  const PB = [[468, 150], [420, 154], [364, 166], [318, 180], [268, 190], [268, 238]];
+  function along(path, s) {
+    let L = 0; const seg = []; for (let i = 1; i < path.length; i++) { const l = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]); seg.push(l); L += l; }
+    let d = s * L; for (let i = 0; i < seg.length; i++) { if (d <= seg[i]) { const f = d / seg[i]; return [lerp(path[i][0], path[i + 1][0], f), lerp(path[i][1], path[i + 1][1], f)]; } d -= seg[i]; }
+    return path[path.length - 1];
+  }
+  function box(g, x, y, w, h, fill, label, sub) {
+    g.fillStyle = fill; rr(g, x, y, w, h, 12); g.fill();
+    const lines = label.split('\n'); lines.forEach((l, i) => txt(g, l, x + w / 2, y + h / 2 + (i - (lines.length - 1) / 2) * 17 - 6, { w: 700, s: 14, c: '#fff', a: 'center' }));
+  }
+  function drawDev(dt) {
+    const g = gD, st = stateAt(tb), p = dk.p; g.clearRect(0, 0, 580, 262);
+    // phase captions
+    g.globalAlpha = st.insp ? 1 : .35; txt(g, 'Inhalation: pressure splints the airway open', 16, 56, { w: 700, s: 14.5, c: COL.inh }); g.globalAlpha = 1;
+    g.globalAlpha = st.insp ? .35 : 1; txt(g, 'Exhalation: valve lowers pressure, air vents out', 16, 252, { w: 700, s: 14.5, c: COL.exh }); g.globalAlpha = 1;
+    // face
+    g.fillStyle = '#e9cdb6'; g.strokeStyle = '#c4a084'; g.lineWidth = 2.5; g.beginPath(); g.ellipse(514, 138, 50, 74, 0, 0, 6.283); g.fill(); g.stroke();
+    g.fillStyle = '#0b1f3a'; g.beginPath(); g.arc(474, 148, 6, 0, 6.283); g.fill(); txt(g, 'nares', 532, 170, { s: 12.5, c: '#3a2a1e' });
+    // boxes
+    box(g, 14, 96, 104, 64, '#0d6b98', 'Blower +\nHumidifier');
+    g.fillStyle = '#9fc6da'; rr(g, 122, 136, 92, 20, 10); g.fill(); txt(g, 'Heated tube', 168, 130, { s: 12, a: 'center', c: COL.dim });
+    const glow = st.rel / Math.max(0.3, p.REL || 0.3);
+    if (p.REL > 0 && !st.insp) { g.shadowColor = COL.epr; g.shadowBlur = 8 + 18 * glow; }
+    box(g, 218, 96, 100, 64, '#1fa387', 'EPR\nrelief valve'); g.shadowBlur = 0;
+    // valve flap
+    const ang = p.REL > 0 ? clamp(st.rel / p.REL, 0, 1) * 0.9 : 0;
+    g.strokeStyle = '#fff'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(268, 160); g.lineTo(268 + Math.sin(ang) * 22, 160 + Math.cos(ang) * 14); g.stroke(); g.lineCap = 'butt';
+    box(g, 328, 96, 92, 64, '#0d6b98', 'Nasal-pillow\nmask');
+    g.strokeStyle = COL.dim; g.fillStyle = '#e8eef6'; g.lineWidth = 2; g.beginPath(); g.arc(374, 86, 7.5, 0, 6.283); g.fill(); g.stroke(); txt(g, 'CO₂ vent', 390, 92, { s: 12, c: COL.dim });
+    // exhaust arrow out of valve
+    g.strokeStyle = COL.exh; g.fillStyle = COL.exh; g.lineWidth = 3; g.globalAlpha = st.insp ? .25 : .9; g.beginPath(); g.moveTo(268, 204); g.lineTo(268, 230); g.stroke(); g.beginPath(); g.moveTo(268, 240); g.lineTo(261, 228); g.lineTo(275, 228); g.fill(); g.globalAlpha = 1;
+    txt(g, 'our one design change', 284, 222, { s: 12.5, w: 600, c: COL.epr });
+    // particles along the active path
+    if (st.insp !== lastIns) { for (const q of pathP) q.s = Math.random(); lastIns = st.insp; }
+    const path = st.insp ? PA : PB, col = st.insp ? COL.inh : COL.exh;
+    for (const q of pathP) {
+      q.s += (Math.abs(st.q) / 0.33) * 0.42 * dt; if (q.s > 1) q.s -= 1;
+      if (Math.abs(st.q) < 0.01) continue; const pt = along(path, q.s);
+      g.globalAlpha = clamp(Math.abs(st.q) * 4, 0.25, 0.95); g.fillStyle = col; g.beginPath(); g.arc(pt[0], pt[1] + q.o * (st.insp ? 7 : 3), 2.6, 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+    // vent jet (speed ~ sqrt(P)); turbulence jitter ~ v^2
+    const v = jetV(st.pdev), vRef = jetV(D.P), turb = (v / vRef) ** 2;
+    for (const j of jetP) {
+      j.a += dt * (v / 24) * 0.9; if (j.a > 1) { j.a -= 1; j.x = (Math.random() - .5); }
+      const y = 78 - j.a * 34, spread = j.a * 9 * (0.6 + 0.6 * turb), jit = (Math.random() - .5) * 3.4 * turb * j.a;
+      g.globalAlpha = (1 - j.a) * 0.85; g.fillStyle = '#dfe9f5'; g.beginPath(); g.arc(374 + j.x * spread + jit, y, 1.8, 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+    txt(g, 'jet ' + fmt(v, 1) + ' m/s', 392, 56, { s: 13, w: 700, c: '#dfe9f5' });
+    // pressure badge
+    const relieving = !st.insp && p.REL > 0 && st.rel > 0.05;
+    g.fillStyle = 'rgba(8,17,31,.75)'; rr(g, 16, 176, 178, 54, 10); g.fill(); g.strokeStyle = relieving ? COL.epr : COL.line2; g.lineWidth = 1.5; g.stroke();
+    txt(g, 'MASK PRESSURE', 26, 194, { s: 11.5, w: 700, c: COL.mut });
+    txt(g, fmt(st.pdev, 1), 26, 222, { s: 26, w: 700, c: relieving ? COL.epr : COL.ink, f: 'ui-monospace, Consolas, monospace' }); txt(g, 'cmH₂O', 94, 222, { s: 13, c: COL.mut });
+    if (relieving) txt(g, '−' + fmt(st.rel, 1), 184, 222, { s: 16, w: 700, c: COL.epr, a: 'right', f: 'ui-monospace, Consolas, monospace' });
+  }
+
+  /* ---------- one-breath waveforms ---------- */
+  function drawWav() {
+    const g = gW, d = dk, p = d.p, x0 = 106, x1 = 632, T = d.T, X = t => x0 + t / T * (x1 - x0), N = d.N;
+    g.clearRect(0, 0, 644, 262);
+    g.fillStyle = 'rgba(59,167,224,.08)'; g.fillRect(x0, 44, X(d.Ti) - x0, 200); g.fillStyle = 'rgba(239,106,94,.08)'; g.fillRect(X(d.Ti), 44, x1 - X(d.Ti), 200);
+    txt(g, 'INHALE', (x0 + X(d.Ti)) / 2, 40, { s: 11.5, w: 700, a: 'center', c: COL.inh }); txt(g, 'EXHALE', (X(d.Ti) + x1) / 2, 40, { s: 11.5, w: 700, a: 'center', c: COL.exh });
+    const rows = [
+      { y: 46, h: 52, name: 'Airflow', unit: 'L/s', lo: -Math.max(d.qpkI, d.qpkE) * 1.2, hi: Math.max(d.qpkI, d.qpkE) * 1.2 },
+      { y: 114, h: 52, name: 'Mask pressure', unit: 'cmH₂O', lo: p.P - 3.6, hi: p.P + 1.2 },
+    ];
+    let emin = 1e9, emax = -1e9; for (const s of [d.before, d.after]) for (const v of s.eff) { emin = Math.min(emin, v); emax = Math.max(emax, v); }
+    rows.push({ y: 182, h: 52, name: 'Muscle effort', unit: '−P_mus, cmH₂O', lo: Math.floor(emin - 0.3), hi: Math.ceil(emax + 0.3) });
+    rows.forEach(r => {
+      txt(g, r.name, 12, r.y + 16, { w: 700, s: 12.5, c: COL.ink }); txt(g, r.unit, 12, r.y + 31, { s: 11, c: COL.mut });
+      g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(x0, r.y, x1 - x0, r.h);
+      r.Y = v => r.y + r.h - (clamp(v, r.lo, r.hi) - r.lo) / (r.hi - r.lo) * r.h;
+      txt(g, fmt(r.hi, r.hi < 3 ? 1 : 0), x0 + 4, r.y + 11, { s: 11, c: COL.mut }); txt(g, fmt(r.lo, r.lo > -3 && r.hi < 3 ? 1 : 0), x0 + 4, r.y + r.h - 3, { s: 11, c: COL.mut });
+    });
+    const line = (arr, key, row, col, w, dash, from, to) => {
+      g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); let f = true;
+      for (let i = from; i < to; i++) { const x = X(arr.t[i]), y = row.Y(arr[key][i]); if (f) { g.moveTo(x, y); f = false; } else g.lineTo(x, y); } g.stroke(); g.setLineDash([]);
+    };
+    // flow (blue in / red out)
+    g.strokeStyle = 'rgba(148,163,184,.3)'; g.setLineDash([3, 4]); g.beginPath(); g.moveTo(x0, rows[0].Y(0)); g.lineTo(x1, rows[0].Y(0)); g.stroke(); g.setLineDash([]);
+    line(d.after, 'q', rows[0], COL.inh, 2.4, null, 0, N); line(d.after, 'q', rows[0], COL.exh, 2.4, null, N, 2 * N);
+    // pressure: before dashed, after teal
+    line(d.before, 'pdev', rows[1], 'rgba(200,210,225,.7)', 1.8, [5, 4], 0, 2 * N); line(d.after, 'pdev', rows[1], COL.epr, 2.8, null, 0, 2 * N);
+    txt(g, 'standard CPAP', x1 - 4, rows[1].Y(p.P) - 6, { s: 11.5, a: 'right', c: '#c8d2e1' });
+    // effort: fill saved area then lines
+    g.fillStyle = 'rgba(52,211,176,.20)'; g.beginPath(); for (let i = N; i < 2 * N; i++) { const x = X(d.after.t[i]), y = rows[2].Y(d.before.eff[i]); i === N ? g.moveTo(x, y) : g.lineTo(x, y); }
+    for (let i = 2 * N - 1; i >= N; i--) g.lineTo(X(d.after.t[i]), rows[2].Y(d.after.eff[i])); g.closePath(); g.fill();
+    line(d.before, 'eff', rows[2], COL.exh, 2.2, [5, 3], 0, 2 * N); line(d.after, 'eff', rows[2], COL.epr, 2.8, null, 0, 2 * N);
+    // peak-flow markers
+    const tp = d.Ti + d.Te / 2, xp = X(tp);
+    g.strokeStyle = 'rgba(255,255,255,.25)'; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(xp, 44); g.lineTo(xp, 234); g.stroke(); g.setLineDash([]);
+    for (const [v, col, dy] of [[d.before.peakEff, COL.exh, -8], [d.after.peakEff, COL.epr, 16]]) { g.fillStyle = col; g.beginPath(); g.arc(xp, rows[2].Y(v), 4.5, 0, 6.283); g.fill(); txt(g, fmt(v, 2), xp + 9, rows[2].Y(v) + (dy < 0 ? 3 : 4), { s: 13, w: 700, c: col, f: 'ui-monospace, Consolas, monospace' }); }
+    // live cursor
+    const xc = X(tb); g.strokeStyle = COL.ink; g.lineWidth = 1.5; g.beginPath(); g.moveTo(xc, 44); g.lineTo(xc, 236); g.stroke();
+    const st = stateAt(tb); g.fillStyle = COL.ink; g.beginPath(); g.arc(xc, rows[0].Y(st.q), 4, 0, 6.283); g.fill(); g.fillStyle = COL.epr; g.beginPath(); g.arc(xc, rows[1].Y(st.pdev), 4, 0, 6.283); g.fill();
+    txt(g, '0 s', x0, 252, { s: 11, a: 'left', c: COL.mut }); txt(g, fmt(T, 1) + ' s', x1, 252, { s: 11, a: 'right', c: COL.mut });
+  }
+
+  /* ---------- work-of-breathing loop ---------- */
+  function drawLoop() {
+    const g = gL, d = dk, p = d.p, N = d.N; g.clearRect(0, 0, 300, 380);
+    const bx0 = 50, bx1 = 286, by0 = 40, by1 = 282;
+    let pmin = 1e9, pmax = -1e9; for (const s of [d.before, d.after]) for (const v of s.pm) { pmin = Math.min(pmin, v); pmax = Math.max(pmax, v); }
+    pmin = Math.floor(pmin - 0.4); pmax = Math.ceil(pmax + 0.4); const vmax = Math.max(0.55, p.VT * 1.12);
+    const X = v => bx0 + (v - pmin) / (pmax - pmin) * (bx1 - bx0), Y = v => by1 - v / vmax * (by1 - by0);
+    g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    g.strokeStyle = 'rgba(148,163,184,.16)'; g.lineWidth = 1;
+    for (let v = Math.ceil(pmin); v <= pmax; v++) { g.beginPath(); g.moveTo(X(v), by0); g.lineTo(X(v), by1); g.stroke(); txt(g, String(v), X(v), by1 + 14, { s: 11, a: 'center', c: COL.mut }); }
+    for (let v = 0; v <= vmax; v += 0.1) { const yy = Y(v); g.beginPath(); g.moveTo(bx0, yy); g.lineTo(bx1, yy); g.stroke(); if (Math.abs(v * 5 - Math.round(v * 5)) < 1e-6) txt(g, fmt(v, 1), bx0 - 6, yy + 4, { s: 11, a: 'right', c: COL.mut }); }
+    txt(g, 'Respiratory muscle pressure P_mus (cmH₂O)', (bx0 + bx1) / 2, by1 + 31, { s: 11.5, a: 'center', c: COL.dim });
+    g.save(); g.translate(13, (by0 + by1) / 2); g.rotate(-Math.PI / 2); txt(g, 'Volume above FRC (L)', 0, 0, { s: 12, a: 'center', c: COL.dim }); g.restore();
+    const loop = (s, col, w, dash, fill) => {
+      g.beginPath(); for (let i = 0; i < 2 * N; i++) { const x = X(s.pm[i]), y = Y(s.V[i]); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.closePath();
+      if (fill) { g.fillStyle = fill; g.fill(); } g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.stroke(); g.setLineDash([]);
+    };
+    loop(d.before, COL.exh, 2.6, null, 'rgba(239,106,94,.10)'); loop(d.after, COL.epr, 2.8, null, 'rgba(52,211,176,.16)');
+    // moving point
+    const idx = tb < d.Ti ? Math.floor(tb / d.Ti * N) : N + Math.floor((tb - d.Ti) / d.Te * N), i2 = clamp(idx, 0, 2 * N - 1);
+    g.fillStyle = COL.ink; g.beginPath(); g.arc(X(d.after.pm[i2]), Y(d.after.V[i2]), 5, 0, 6.283); g.fill();
+    // legend + numbers
+    g.fillStyle = COL.exh; g.fillRect(24, 335, 16, 4); txt(g, 'standard CPAP: ' + fmt(d.before.work, 2) + ' J per exhalation', 46, 341, { s: 12.5, w: 600, c: COL.exh });
+    g.fillStyle = COL.epr; g.fillRect(24, 354, 16, 4); txt(g, 'with relief: ' + fmt(d.after.work, 2) + ' J per exhalation', 46, 360, { s: 12.5, w: 600, c: COL.epr });
+  }
+
+  /* ---------- before -> after metrics ---------- */
+  function drawMet() {
+    const g = gM, b = dk.before, a = dk.after; g.clearRect(0, 0, 332, 380);
+    const pc = (x, y) => y === x ? '0%' : (y / x - 1) * 100 <= -0.5 ? '−' + Math.round((1 - y / x) * 100) + '%' : Math.round((y / x - 1) * 100) + '%';
+    const rowsD = [
+      ['Peak exhalation effort', fmt(b.peakEff, 2) + ' → ' + fmt(a.peakEff, 2), 'cmH₂O', pc(b.peakEff, a.peakEff), b.peakEff !== a.peakEff],
+      ['Expiratory work of breathing', fmt(b.work, 2) + ' → ' + fmt(a.work, 2), 'J / breath', pc(b.work, a.work), b.work !== a.work],
+      ['Expiratory pressure–time product', fmt(b.ptp, 1) + ' → ' + fmt(a.ptp, 1), 'cmH₂O·s', pc(b.ptp, a.ptp), b.ptp !== a.ptp],
+      ['Vent jet velocity', fmt(b.jet, 1) + ' → ' + fmt(a.jet, 1), 'm/s', pc(b.jet, a.jet), b.jet !== a.jet],
+      ['Vent Reynolds number', Math.round(b.re) + ' → ' + Math.round(a.re), '', pc(b.re, a.re), b.re !== a.re],
+      ['Turbulence proxy (∝ v²)', '', '', pc(b.jet * b.jet, a.jet * a.jet), b.jet !== a.jet],
+    ];
+    rowsD.forEach((r, i) => {
+      const y = 34 + i * 49; g.fillStyle = 'rgba(8,17,31,.5)'; rr(g, 12, y, 308, 44, 10); g.fill(); g.strokeStyle = COL.line; g.lineWidth = 1; g.stroke();
+      txt(g, r[0], 22, y + 17, { s: 12.5, w: 600, c: COL.dim });
+      if (r[1]) { txt(g, r[1], 22, y + 37, { s: 15.5, w: 700, c: COL.ink, f: 'ui-monospace, Consolas, monospace' }); txt(g, r[2], 22 + g.measureText(r[1]).width + 6, y + 37, { s: 11.5, c: COL.mut }); }
+      const col = r[4] ? COL.epr : COL.mut; g.font = '800 17px Segoe UI, Calibri, Arial'; const w = g.measureText(r[3]).width + 18;
+      g.fillStyle = r[4] ? 'rgba(52,211,176,.16)' : 'rgba(148,163,184,.12)'; rr(g, 312 - w, y + 9, w, 27, 13); g.fill(); txt(g, r[3], 312 - w / 2, y + 28, { s: 17, w: 800, c: col, a: 'center' });
+    });
+    const y = 34 + 6 * 49; g.fillStyle = 'rgba(74,222,128,.10)'; rr(g, 12, y, 308, 40, 10); g.fill();
+    txt(g, '✓ Same tidal volume (' + fmt(D.VT, 2) + ' L): therapy preserved', 22, y + 25, { s: 13, w: 700, c: '#7ef0a6' });
+  }
+
+  /* ---------- comfort vs therapy sweep ---------- */
+  function marginAt(rel, pat) {
+    const p = D, Te = 60 / p.RR - 60 / p.RR / (1 + DECK.IE), qpk = Math.PI * p.VT / (2 * Te), dP = OSA.STAGE.REM.dP;
+    let m = 1e9;
+    for (let i = 0; i <= 60; i++) {
+      const te = i / 60 * Te, q = qpk * Math.sin(Math.PI * te / Te), psite = p.P - rel * Math.min(1, q / qpk) + 0.5 * pat.rUs * q;
+      const pcrit = pat.pcrit + dP + (te / Te > 0.5 ? 1.0 : 0.0); m = Math.min(m, psite - pcrit);
+    }
+    return m;
+  }
+  function drawSwp() {
+    const g = gS, pat = patientParams(), x0 = 62, x1 = 500, y0 = 56, y1 = 122; g.clearRect(0, 0, 580, 178);
+    const X = r => x0 + r / 3 * (x1 - x0);
+    const base = D.P + D.R * (Math.PI * D.VT / (2 * (60 / D.RR - 60 / D.RR / (1 + DECK.IE)))) - D.VT / 2 / D.C;
+    const red = r => 100 * r / base;                              // peak-effort reduction, %
+    const ms = []; for (let i = 0; i <= 30; i++) ms.push(marginAt(i / 10, pat));
+    let mlo = Math.min(-2, Math.min.apply(null, ms) - 1), mhi = Math.max(6, Math.max.apply(null, ms) + 1);
+    const YL = v => y1 - (v / 45) * (y1 - y0), YR = v => y1 - (v - mlo) / (mhi - mlo) * (y1 - y0);
+    g.fillStyle = 'rgba(255,255,255,.03)'; g.fillRect(x0, y0, x1 - x0, y1 - y0);
+    // collapse zone (margin < 0)
+    if (mlo < 0) { g.fillStyle = 'rgba(242,99,90,.16)'; g.fillRect(x0, YR(0), x1 - x0, y1 - YR(0)); }
+    g.strokeStyle = 'rgba(148,163,184,.16)'; g.lineWidth = 1; for (let r = 0; r <= 3; r++) { g.beginPath(); g.moveTo(X(r), y0); g.lineTo(X(r), y1); g.stroke(); txt(g, String(r), X(r), y1 + 14, { s: 11.5, a: 'center', c: COL.mut }); }
+    txt(g, 'Relief (cmH₂O)', (x0 + x1) / 2, y1 + 29, { s: 12, a: 'center', c: COL.dim });
+    for (const v of [0, 15, 30, 45]) txt(g, v + '%', x0 - 6, YL(v) + 4, { s: 11, a: 'right', c: COL.epr });
+    for (const v of [0, 5, 10]) if (v >= mlo && v <= mhi) txt(g, String(v), x1 + 6, YR(v) + 4, { s: 11, c: COL.amber });
+    if (mlo < 0) { g.strokeStyle = 'rgba(242,99,90,.7)'; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(x0, YR(0)); g.lineTo(x1, YR(0)); g.stroke(); g.setLineDash([]); txt(g, 'airway closes', x0 + 6, YR(0) + 13, { s: 11.5, c: '#ff9b93' }); }
+    // curves
+    g.strokeStyle = COL.epr; g.lineWidth = 3; g.beginPath(); for (let i = 0; i <= 30; i++) { const r = i / 10; i ? g.lineTo(X(r), YL(red(r))) : g.moveTo(X(r), YL(red(r))); } g.stroke();
+    g.strokeStyle = COL.amber; g.lineWidth = 3; g.beginPath(); ms.forEach((m, i) => { const r = i / 10; i ? g.lineTo(X(r), YR(m)) : g.moveTo(X(r), YR(m)); }); g.stroke();
+    // current setting
+    const rc = relEff(); g.strokeStyle = COL.ink; g.lineWidth = 1.5; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(X(rc), y0); g.lineTo(X(rc), y1); g.stroke(); g.setLineDash([]);
+    g.fillStyle = COL.epr; g.beginPath(); g.arc(X(rc), YL(red(rc)), 5.5, 0, 6.283); g.fill(); const mc = marginAt(rc, pat); g.fillStyle = mc < 0 ? COL.crit : COL.amber; g.beginPath(); g.arc(X(rc), YR(mc), 5.5, 0, 6.283); g.fill();
+    // legend + sweet spot
+    g.fillStyle = COL.epr; g.fillRect(x0, 40, 16, 4); txt(g, 'comfort: peak-effort reduction', x0 + 22, 46, { s: 12.5, w: 600, c: COL.epr });
+    g.fillStyle = COL.amber; g.fillRect(x0 + 232, 40, 16, 4); txt(g, 'airway margin, cmH₂O (right axis)', x0 + 254, 46, { s: 12.5, w: 600, c: COL.amber });
+    let best = 0; for (let i = 0; i <= 30; i++) if (ms[i] >= 2) best = i / 10;
+    const sub = (pat.name || 'Custom') + ' · REM · CPAP ' + fmt(D.P, 1);
+    let msg; if (ms[30] >= 2) msg = 'Full relief keeps margin ≥ 2 cmH₂O'; else if (ms[0] < 2) msg = 'Thin margin: raise CPAP first'; else msg = 'Max relief with margin ≥ 2: ' + fmt(best, 1) + ' cmH₂O';
+    txt(g, sub, 16, 170, { s: 12, c: COL.mut }); txt(g, msg, 564, 170, { s: 12.5, w: 700, c: mc < 2 ? '#fcd34d' : '#7ef0a6', a: 'right' });
+  }
+
+  /* ---------- controls ---------- */
+  function sync() {
+    $('#vP').textContent = fmt(D.P, 1) + ' cmH₂O'; $('#vRel').textContent = fmt(D.REL, 1) + ' cmH₂O'; $('#vVT').textContent = fmt(D.VT, 2) + ' L';
+    $('#vRR').textContent = D.RR + ' /min'; $('#vR').textContent = fmt(D.R, 1) + ' cmH₂O·s/L'; $('#vC').textContent = fmt(D.C, 2) + ' L/cmH₂O';
+    $('#eprT').textContent = G.eprOn ? 'Relief valve ON' : 'Relief valve OFF'; $('#eprT').classList.toggle('on', G.eprOn);
+    const dm = isDefault(); const el = $('#deckBadge'); el.textContent = dm ? '✓ matches deck slides 8–10' : 'custom parameters'; el.className = 'badge ' + (dm ? 'b-good' : 'b-mild');
+  }
+  [['sP', 'P'], ['sRel', 'REL'], ['sVT', 'VT'], ['sRR', 'RR'], ['sR', 'R'], ['sC', 'C']].forEach(([id, k]) => $('#' + id).addEventListener('input', e => { D[k] = +e.target.value; if (k === 'REL' && D.REL > 0) G.eprOn = true; sync(); recompute(); }));
+  $('#eprT').addEventListener('click', () => { G.eprOn = !G.eprOn; sync(); recompute(); });
+  $('#resetDeck').addEventListener('click', () => { Object.assign(D, DECK); G.eprOn = true; [['sP', 'P'], ['sRel', 'REL'], ['sVT', 'VT'], ['sRR', 'RR'], ['sR', 'R'], ['sC', 'C']].forEach(([id, k]) => { $('#' + id).value = D[k]; }); sync(); recompute(); });
+
+  recompute(); sync();
+  return {
+    enter() { $('#sP').value = D.P; $('#sRel').value = D.REL; sync(); recompute(); },
+    onPatient() { },
+    set(k, v) { D[k] = v; const m = { P: 'sP', REL: 'sRel', VT: 'sVT', RR: 'sRR', R: 'sR', C: 'sC' }[k]; if (m) $('#' + m).value = v; sync(); recompute(); },
+    setEpr(on) { G.eprOn = on; sync(); recompute(); },
+    get deck() { return dk; },
+    update(dt) { if (!G.paused) tb = (tb + dt) % dk.T; this._dt = dt; },
+    draw() { drawDev(Math.max(this._dt || 0.016, 0.001)); drawWav(); drawLoop(); drawMet(); drawSwp(); },
+  };
+})();
+
+/* =====================================================================
+   Guided tour (deterministic timeline), model-notes modal, shortcuts
+   ===================================================================== */
+const Tour = (function () {
+  const cap = $('#cap'), card = $('#card');
+  let t = 0, i = 0, steps = [];
+  function say(a, b) { cap.innerHTML = a + (b ? '<small>' + b + '</small>' : ''); cap.classList.add('on'); }
+  function hush() { cap.classList.remove('on'); }
+  function s1() { return SCENES[1]; }
+  function setCpap(on, p) { G.cpapOn = on; if (p) G.cpap = p; s1().cpapUI(); s1().applyLive(); }
+  function setPatient(k) { selectPatient(k, false); }
+
+  function build() {
+    steps = [
+      { at: 0, fn() { hush(); showScene(1); G.cpapOn = false; G.stage = 'N2'; G.speed = 4; G.paused = false; G.eprOn = true; selectPatient('healthy'); s1().cpapUI(); $$('#stg1 button').forEach(b => b.classList.toggle('on', b.dataset.s === 'N2')); $$('#spd1 button').forEach(b => b.classList.toggle('on', b.dataset.v === '4'));
+        card.innerHTML = '<h1>Rethinking CPAP</h1><p>How obstructive sleep apnea happens, what it does to a night, and how a flow-triggered expiratory relief valve helps</p><p style="font-size:17px;color:var(--mut);margin-top:22px">Group 10 · BME 3261C Biofluid Mechanics · live physiology simulation</p>'; card.classList.add('on'); } },
+      { at: 5, fn() { card.classList.remove('on'); say('A healthy sleeper', 'Airway pressure stays above the airway’s closing pressure (Pcrit), so the airway stays open all night'); } },
+      { at: 13, fn() { setPatient('severe'); say('Severe OSA: sleep relaxes the airway muscles', 'Pcrit rises above zero. Anatomy sets the starting point; muscle response, arousal threshold and loop gain vary too'); } },
+      { at: 22, fn() { say('Each breath pulls airway pressure below Pcrit', 'The walls collapse. The chest pulls harder and harder, but no air moves: an obstructive apnea'); } },
+      { at: 33, fn() { say('Oxygen falls, effort climbs, CO₂ rises…', 'until the brain arouses. Muscles switch on, the airway pops open, the patient gasps, then falls asleep and it repeats'); } },
+      { at: 47, fn() { setCpap(true, 10); say('CPAP: a pneumatic splint', 'Raising airway pressure above Pcrit keeps the airway open through every breath'); } },
+      { at: 58, fn() { showScene(2); say('One whole night, same patient', 'Untreated: about 50 breathing events an hour fragment sleep. Deep sleep and REM are almost gone'); } },
+      { at: 80, fn() { say('With CPAP at 10 cmH₂O', 'Events disappear, SpO₂ stays normal, and deep sleep and REM return'); } },
+      { at: 90, fn() { showScene(3); G.eprOn = false; SCENES[3].setEpr(false); say('But CPAP holds one pressure all breath long', 'So the patient always exhales against 10 cmH₂O: “fighting the machine”'); } },
+      { at: 102, fn() { SCENES[3].setEpr(true); say('Our valve senses the start of exhalation', 'It drops mask pressure by up to 3 cmH₂O, then restores full pressure for the next inhalation'); } },
+      { at: 114, fn() { say('Peak exhalation effort −35% · expiratory work −28%', 'Vent jet 24.3 → 20.3 m/s (−16%), turbulence proxy −30%. Same tidal volume, so therapy is preserved'); } },
+      { at: 126, fn() { SCENES[3].set('REL', 0); say('The trade-off: relief also lowers the pressure holding the airway open', 'Watch comfort (green) rise as the airway margin above Pcrit (amber) shrinks. Sweep to find the sweet spot'); } },
+      { at: 138, fn() { say('Sweep relief 0 → 3 cmH₂O', 'The deck’s next step: the largest relief that keeps a safe margin for each patient and CPAP setting'); } },
+      { at: 146, fn() { hush(); card.innerHTML = '<h1>Takeaways</h1><ul><li><i>1</i>OSA is a collapse problem: airway pressure falls below Pcrit during sleep</li><li><i>2</i>CPAP fixes the airway, but makes every exhalation harder</li><li><i>3</i>One flow-triggered valve cuts peak exhalation effort 35% and vent jet speed 16%, with therapy preserved</li></ul>'; card.classList.add('on'); } },
+      { at: 158, fn() { Tour.stop(); } },
+    ];
+  }
+  function reset() { $('#btnTour').textContent = '■ Stop tour'; }
+  return {
+    get time() { return t; },
+    start() { build(); t = 0; i = 0; G.tourOn = true; document.body.classList.add('tour'); reset(); },
+    stop() { G.tourOn = false; document.body.classList.remove('tour'); hush(); card.classList.remove('on'); $('#btnTour').textContent = '▶ Guided tour'; },
+    update(dt) {
+      t += dt; while (i < steps.length && t >= steps[i].at) { steps[i].fn(); i++; }
+      if (t >= 126 && t < 140) SCENES[3].set('REL', Math.min(3, Math.round(3 * (t - 126) / 12 * 10) / 10));
+    },
+  };
+})();
+
+/* ---------- header buttons & shortcuts ---------- */
+$('#btnTour').addEventListener('click', () => { if (G.tourOn) Tour.stop(); else Tour.start(); });
+$('#btnFs').addEventListener('click', () => { const d = document; if (!d.fullscreenElement) d.documentElement.requestFullscreen && d.documentElement.requestFullscreen(); else d.exitFullscreen && d.exitFullscreen(); });
+$('#btnInfo').addEventListener('click', () => openNotes());
+$('#modalX').addEventListener('click', () => $('#modal').classList.remove('on'));
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (k === 't') $('#btnTour').click(); else if (k === 'f') $('#btnFs').click(); else if (k === 'i') openNotes();
+  else if (k === '1' || k === '2' || k === '3') { if (G.tourOn) Tour.stop(); showScene(+k); }
+  else if (k === ' ') { e.preventDefault(); G.paused = !G.paused; $('#pauseT').textContent = G.paused ? '▶ Play' : '❚❚ Pause'; }
+  else if (k === 'escape') { $('#modal').classList.remove('on'); if (G.tourOn) Tour.stop(); }
+});
+
+/* ---------- model notes ---------- */
+let presetTable = null;
+function openNotes() {
+  if (!presetTable) {
+    presetTable = ['healthy', 'mild', 'moderate', 'severe'].map(k => {
+      const p = OSA.PRESETS[k], u = OSA.runNight(p, { cpap: 0, relief: 0 }, 3, 8).summary(), c = OSA.runNight(p, { cpap: 10, relief: 0 }, 3, 8).summary();
+      return '<tr><td>' + p.name + '</td><td>' + fmt(p.pcrit, 1) + '</td><td>' + fmt(p.rUs, 1) + '</td><td>' + fmt(p.gDil, 1) + '</td><td>' + fmt(p.arTh, 0) + '</td><td>' + fmt(p.lg, 2) + '</td><td><b>' + fmt(u.ahi, 1) + '</b></td><td>' + fmt(u.minSpo2, 0) + '%</td><td>' + fmt(c.ahi, 1) + '</td></tr>';
+    }).join('');
+  }
+  $('#modalBox').innerHTML = `
+  <h2>Model notes, sources and limits</h2>
+  <p>A physiology teaching model built for this group’s CPAP expiratory-relief project. It is <b>not</b> a validated clinical simulator and should not be used for patient decisions.</p>
+
+  <h3>Scene 1 · how it happens</h3>
+  <ul>
+   <li><b>Airway = Starling resistor</b> (a collapsible tube). While airway pressure at the collapse site stays above the closing pressure <code>Pcrit</code> the airway is open. Once the downstream pressure falls below <code>Pcrit</code>, flow is limited to <code>V̇max = (P_nose − Pcrit) / R_us</code>, and if <code>P_nose &lt; Pcrit</code> there is no flow at all (Smith 1988).</li>
+   <li><b>Lung:</b> single-compartment RC model with the deck’s values (R = 3 cmH₂O·s/L, C = 0.1 L/cmH₂O, VT 0.5 L, 15 /min, I:E 1:1.5). Inspiration is driven by respiratory-muscle pressure; exhalation is braked (prescribed half-sine), as in the deck.</li>
+   <li><b>Gas exchange and control:</b> alveolar CO₂ and O₂ mass balance, Severinghaus SpO₂ curve, 12 s lung-to-finger delay, delayed CO₂ and O₂ chemoreflex raising effort and dilator drive, and an effort-triggered arousal that re-activates the dilators.</li>
+   <li><b>Four traits</b> (Eckert 2013): Pcrit, dilator responsiveness, arousal threshold and loop gain. Trait ranges are anchored to that study (Pcrit ≈ +0.3 cmH₂O in OSA vs −6.2 in controls).</li>
+  </ul>
+  <h3>Scene 2 · what it does</h3>
+  <ul>
+   <li>The same model runs 8 h, driven by a typical five-cycle sleep architecture. Events are scored on breath amplitude with AASM-style rules: apnea ≥ 90% reduction for ≥ 10 s; hypopnea ≥ 30% reduction for ≥ 10 s with ≥ 3% desaturation or an arousal. AHI bands: &lt;5 normal, 5–15 mild, 15–30 moderate, ≥30 severe.</li>
+   <li>Heart-rate and blood-pressure traces are <b>illustrative</b>: scaled from published ranges, not a cardiovascular model.</li>
+  </ul>
+  <table><tr><th>Preset</th><th>Pcrit</th><th>R_us</th><th>Dilator gain</th><th>Arousal thr.</th><th>Loop gain</th><th>Untreated AHI</th><th>SpO₂ nadir</th><th>AHI on CPAP 10</th></tr>${presetTable}</table>
+  <p class="note">Computed live from this model (one simulated night per row).</p>
+
+  <h3>Scene 3 · our solution (the deck’s model, reproduced)</h3>
+  <ul>
+   <li><code>P_mus + P_dev = R·V̇ + V/C</code>. Exhalation effort <code>e = −P_mus = P_dev(t) + R·|V̇| − V/C</code>. Relief is flow-proportional: <code>P_dev = P_cpap − relief·|V̇|/V̇_peak</code>.</li>
+   <li>Vent jet: orifice equation <code>v = Cd·√(2P/ρ)</code> with Cd = 0.6, ρ = 1.2 kg/m³, D = 1 mm, μ = 1.8×10⁻⁵ Pa·s. This reproduces every number on slides 8–10 (8.48 → 5.48 cmH₂O, 0.41 → 0.29 J, 24.3 → 20.3 m/s, Re 1617 → 1353, −24% PTP, −30% v²).</li>
+   <li><b>Sweep chart:</b> comfort is exact from the deck model. Airway margin uses the Starling-resistor model from scene 1 at the worst case (REM, end-expiration): <code>margin = P_cpap − relief·|V̇|/V̇_peak + ½·R_us·|V̇| − Pcrit</code>. The 2 cmH₂O threshold is an illustrative safety margin, not a clinical standard.</li>
+  </ul>
+  <h3>Honest limits</h3>
+  <ul>
+   <li>The deck’s “effort” is a constant-offset convention (P_dev enters as a fixed 10 cmH₂O). The <i>absolute</i> reduction (3.0 cmH₂O at peak flow) is robust; the <i>percentages</i> depend on that convention.</li>
+   <li>Vent noise is shown as jet velocity and a v² turbulence proxy, not decibels.</li>
+   <li>Whether expiratory relief improves long-term CPAP adherence is <b>not established</b>: no robust systematic-review evidence shows any pressure-delivery modification improves adherence (Killick &amp; Marshall 2020). C-Flex studies found unchanged tidal volume and inspiratory flow limitation (Canisius 2008), consistent with “therapy preserved”.</li>
+   <li>Single compartment, linear R and C, fixed anatomy, no central apneas, no mouth leak.</li>
+  </ul>
+
+  <h3>Embedding options (URL parameters)</h3>
+  <table><tr><th><code>?scene=1|2|3</code></th><td>open a scene</td><th><code>&amp;embed=1</code></th><td>compact chrome for slides</td></tr>
+  <tr><th><code>&amp;autoplay=1</code></th><td>start the guided tour</td><th><code>&amp;patient=healthy|mild|moderate|severe</code></th><td>preset patient</td></tr>
+  <tr><th><code>&amp;cpap=1</code></th><td>CPAP on (scene 1)</td><th><code>&amp;stage=REM</code></th><td>REM instead of NREM</td></tr></table>
+  <p>Keys: <code>1 2 3</code> scenes · <code>T</code> tour · <code>Space</code> pause · <code>F</code> full screen · <code>I</code> this panel.</p>
+
+  <h3>References (verified on PubMed)</h3>
+  <ul>
+   <li>Eckert DJ et al. Defining phenotypic causes of obstructive sleep apnea. <i>Am J Respir Crit Care Med</i> 2013;188:996–1004. <a href="https://doi.org/10.1164/rccm.201303-0448OC" target="_blank" rel="noopener">doi:10.1164/rccm.201303-0448OC</a></li>
+   <li>Benjafield AV et al. Estimation of the global prevalence and burden of obstructive sleep apnoea. <i>Lancet Respir Med</i> 2019;7:687–698. <a href="https://doi.org/10.1016/S2213-2600(19)30198-5" target="_blank" rel="noopener">doi:10.1016/S2213-2600(19)30198-5</a></li>
+   <li>Smith PL et al. Upper airway pressure-flow relationships in obstructive sleep apnea. <i>J Appl Physiol</i> 1988;64:789–795. <a href="https://doi.org/10.1152/jappl.1988.64.2.789" target="_blank" rel="noopener">doi:10.1152/jappl.1988.64.2.789</a></li>
+   <li>Sullivan CE et al. Reversal of obstructive sleep apnoea by continuous positive airway pressure applied through the nares. <i>Lancet</i> 1981;1:862–865. <a href="https://doi.org/10.1016/s0140-6736(81)92140-1" target="_blank" rel="noopener">doi:10.1016/s0140-6736(81)92140-1</a></li>
+   <li>Killick R, Marshall NS. The impact of device modifications and pressure delivery on adherence. <i>Sleep Med Clin</i> 2021;16(1):75–84 (online Dec 2020). <a href="https://doi.org/10.1016/j.jsmc.2020.10.008" target="_blank" rel="noopener">doi:10.1016/j.jsmc.2020.10.008</a></li>
+   <li>Canisius S et al. C-Flex technology: effects on breathing parameters and inspiratory flow limitation. <i>Respiration</i> 2009;78:168–176. <a href="https://doi.org/10.1159/000189210" target="_blank" rel="noopener">doi:10.1159/000189210</a></li>
+  </ul>`;
+  $('#modal').classList.add('on');
+}
+
+/* =====================================================================
+   Boot: URL parameters, initial state
+   ===================================================================== */
+(function boot() {
+  G.embed = P.get('embed') === '1'; if (G.embed) document.body.classList.add('embed');
+  G.capture = P.get('capture') === '1';
+  if (P.get('captions') === '0') document.body.classList.add('nocap');
+  if (P.get('patient') && OSA.PRESETS[P.get('patient')]) { G.patient = P.get('patient'); setPat1(G.patient); setPat2 && setPat2(G.patient); }
+  if (P.get('speed')) { G.speed = +P.get('speed'); }
+  if (P.get('cpap') === '1' || P.get('cpap') === 'on') { G.cpapOn = true; }
+  if (P.get('stage') === 'REM') { G.stage = 'REM'; }
+  fit();
+  showScene(+(P.get('scene') || 1));
+  requestAnimationFrame(t => { lastT = t; frame(t); });
+  if (P.get('autoplay') === '1') setTimeout(() => Tour.start(), 400);
+  window.__ready = true;
+})();
+
+</script>
+</body>
+</html>
