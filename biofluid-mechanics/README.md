@@ -19,6 +19,7 @@ Or open [`dashboard.html`](dashboard.html) locally in a browser.
 | [`dashboard.html`](dashboard.html) | Three-tab computational dashboard with live Chart.js plots and sliders |
 | [`atherosclerosis-cfd.html`](atherosclerosis-cfd.html) | Interactive reduced-order CFD of blood flow through a stenotic artery (straight **or** carotid-style bifurcation): velocity heat map, streamlines, pressure, and wall shear stress |
 | [`sleep-apnea-simulation.html`](sleep-apnea-simulation.html) | Self-contained (no internet needed) physiology simulation for the Group 10 CPAP project: how obstructive sleep apnea happens, what a night of it does, and how a flow-triggered expiratory relief valve works |
+| [`Sleep_Apnea_Presentation_with_Simulation.pptx`](Sleep_Apnea_Presentation_with_Simulation.pptx) | Group 10 deck (16 slides) with the simulation videos embedded |
 | [`sleep-apnea-media/`](sleep-apnea-media/) | Ready-to-insert MP4 clips and 1920×1080 stills of the simulation for PowerPoint |
 
 ## Topics in the dashboard
